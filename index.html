@@ -1,0 +1,793 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#0a0a0d" />
+  <title>Dungeon Match-3</title>
+  <style>
+:root {
+  color-scheme: dark;
+  --bg: #0a0a0d;
+  --panel: #121217;
+  --text: #e1e1e1;
+  --muted: #b4b4b4;
+  --gap: 3px;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+body { min-height: 100dvh; overscroll-behavior: none; }
+button { font: inherit; }
+
+#app {
+  width: min(100vw, 520px);
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+}
+
+.hud { width: 100%; }
+.top-hud { display: flex; align-items: center; gap: 8px; min-height: 34px; }
+#status { flex: 1; font-size: clamp(11px, 3vw, 14px); line-height: 1.2; color: #ddd; }
+#new-game {
+  border: 1px solid #555b66;
+  background: #1b1d24;
+  color: #ddd;
+  border-radius: 8px;
+  padding: 7px 9px;
+}
+
+#board-wrap { position: relative; width: 100%; }
+#board {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: var(--gap);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.tile {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  min-width: 0;
+  border-radius: 3px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.tile.floor { background: rgb(82,78,72); }
+.tile.wall { background: rgb(42,46,60); }
+.tile .resource {
+  font-size: clamp(17px, 6.2vw, 30px);
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+}
+.tile .marker {
+  position: absolute;
+  top: 2px;
+  font-size: clamp(9px, 2.7vw, 12px);
+  line-height: 1;
+  font-weight: 700;
+  pointer-events: none;
+}
+.tile .marker.entrance { left: 4px; color: rgb(145,185,195); }
+.tile .marker.exit { right: 4px; color: rgb(225,205,120); }
+.tile.hero .resource { visibility: hidden; }
+.tile .hero-mark {
+  width: 35%;
+  aspect-ratio: 1;
+  background: rgb(240,230,210);
+  position: absolute;
+  left: 50%; top: 50%; transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.bottom-hud {
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  align-items: baseline;
+  font-size: clamp(12px, 3.5vw, 15px);
+}
+#hp { color: #b4b4b4; }
+#resources { display: flex; flex-wrap: wrap; gap: 0 10px; }
+.resource-count .num { color: #b4b4b4; }
+#version { grid-column: 1 / -1; font-size: 10px; color: #666; text-align: right; }
+
+#flash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 20;
+}
+#flash.invalid { background: rgba(105,65,80,.45); animation: flash 130ms ease-out; }
+#flash.blocked { background: rgba(70,95,115,.60); animation: flash 160ms ease-out; }
+#flash.starving { background: rgba(200,30,30,.62); animation: flash 180ms ease-out; }
+@keyframes flash { from { opacity: 1; } to { opacity: 0; } }
+
+.results {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  background: rgba(0,0,0,.72);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+.results.hidden { display: none; }
+.results-panel {
+  width: min(86%, 330px);
+  background: rgba(18,18,23,.97);
+  border: 1px solid #363640;
+  border-radius: 12px;
+  padding: 18px;
+  text-align: center;
+  box-shadow: 0 16px 40px rgba(0,0,0,.4);
+}
+.results-panel h2 { margin: 0 0 8px; font-size: 26px; }
+.results-panel .score { font-size: 21px; margin-bottom: 14px; }
+.results-list { display: grid; gap: 5px; text-align: left; margin: 0 auto 16px; width: fit-content; }
+.results-panel button { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #656575; background: #272731; color: #eee; }
+
+@media (orientation: landscape) and (max-height: 540px) {
+  #app { width: min(74vh, 520px); gap: 4px; padding-top: 4px; padding-bottom: 4px; }
+  .top-hud { min-height: 28px; }
+  .bottom-hud { min-height: 38px; font-size: 11px; }
+  #version { display: none; }
+}
+
+  </style>
+</head>
+<body>
+  <main id="app">
+    <header class="hud top-hud">
+      <div id="status">Swipe any adjacent pair • match = one step</div>
+      <button id="new-game" type="button">New game</button>
+    </header>
+
+    <section id="board-wrap" aria-label="Dungeon Match-3 board">
+      <div id="board"></div>
+      <div id="flash" aria-hidden="true"></div>
+      <div id="results" class="results hidden" role="dialog" aria-modal="true"></div>
+    </section>
+
+    <footer class="hud bottom-hud">
+      <div id="hp">HP 5</div>
+      <div id="resources"></div>
+      <div id="version">web reset 1 • single-file</div>
+    </footer>
+  </main>
+
+  <script>
+const CONFIG = {
+  BOARD_COLS: 9,
+  BOARD_ROWS: 11,
+  ROOM_OPENING_MIN: 1,
+  ROOM_OPENING_MAX: 3,
+  ITEM_TYPES: ["food", "health", "attack", "gold", "bombs"],
+  ITEM_LABEL: { food: "F", health: "H", attack: "A", gold: "G", bombs: "B" },
+  ITEM_COLOR: {
+    food: "rgb(220,130,60)",
+    health: "rgb(230,90,90)",
+    attack: "rgb(120,90,200)",
+    gold: "rgb(235,190,70)",
+    bombs: "rgb(165,170,180)",
+  },
+  DUNGEON_FLOOR: "floor",
+  DUNGEON_WALL: "wall",
+  DUNGEON_FLOOR_COLOR: "rgb(82,78,72)",
+  DUNGEON_WALL_COLOR: "rgb(42,46,60)",
+  PLAYER_COLOR: "rgb(240,230,210)",
+  ENTRANCE_COLOR: "rgb(145,185,195)",
+  EXIT_COLOR: "rgb(225,205,120)",
+  ENTRANCE_LABEL: "<",
+  EXIT_LABEL: ">",
+  STARTING_HP: 5,
+  STARTING_FOOD: 25,
+  STORAGE_CAP: 99,
+  MIN_SWIPE: 18,
+  MAX_CASCADE_WAVES: 250,
+  MATCH_REWARDS: {
+    food: { 3: 1, 4: 3, 5: 6 },
+    health: { 3: 1, 4: 2, 5: 4 },
+    attack: { 3: 1, 4: 2, 5: 4 },
+    gold: { 3: 1, 4: 2, 5: 4 },
+    bombs: { 3: 1, 4: 2, 5: 4 },
+  },
+};
+
+const DIRECTIONS = {
+  UP: [-1, 0],
+  UP_RIGHT: [-1, 1],
+  RIGHT: [0, 1],
+  DOWN_RIGHT: [1, 1],
+  DOWN: [1, 0],
+  DOWN_LEFT: [1, -1],
+  LEFT: [0, -1],
+  UP_LEFT: [-1, -1],
+};
+
+const defaultRng = () => Math.random();
+
+function seededRng(seed) {
+  // Mulberry32: tiny deterministic RNG for tests/replays.
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function choice(values, rng = defaultRng) {
+  return values[Math.floor(rng() * values.length)];
+}
+
+function randintInclusive(min, max, rng = defaultRng) {
+  return min + Math.floor(rng() * (max - min + 1));
+}
+
+function inBounds(row, col) {
+  return row >= 0 && row < CONFIG.BOARD_ROWS && col >= 0 && col < CONFIG.BOARD_COLS;
+}
+
+function generateDungeon({ rng = defaultRng, openingWidth = null } = {}) {
+  const rows = CONFIG.BOARD_ROWS;
+  const cols = CONFIG.BOARD_COLS;
+  if (rows < 9 || cols < 7) throw new Error("The two-room prototype needs at least a 7x9 board");
+
+  const ground = Array.from({ length: rows }, () =>
+    Array.from({ length: cols }, () => CONFIG.DUNGEON_WALL),
+  );
+
+  const dividerRow = Math.floor(rows / 2);
+  for (let row = 1; row < rows - 1; row++) {
+    if (row === dividerRow) continue;
+    for (let col = 1; col < cols - 1; col++) ground[row][col] = CONFIG.DUNGEON_FLOOR;
+  }
+
+  if (openingWidth == null) {
+    openingWidth = randintInclusive(CONFIG.ROOM_OPENING_MIN, CONFIG.ROOM_OPENING_MAX, rng);
+  }
+  if (openingWidth < CONFIG.ROOM_OPENING_MIN || openingWidth > CONFIG.ROOM_OPENING_MAX) {
+    throw new Error("openingWidth is outside configured room-opening bounds");
+  }
+  const interiorCols = cols - 2;
+  if (openingWidth > interiorCols) throw new Error("openingWidth is wider than the room");
+
+  const openingStart = randintInclusive(1, cols - 1 - openingWidth, rng);
+  const openingCells = [];
+  for (let col = openingStart; col < openingStart + openingWidth; col++) {
+    ground[dividerRow][col] = CONFIG.DUNGEON_FLOOR;
+    openingCells.push([dividerRow, col]);
+  }
+
+  const room1 = { top: 1, left: 1, bottom: dividerRow - 1, right: cols - 2 };
+  const room2 = { top: dividerRow + 1, left: 1, bottom: rows - 2, right: cols - 2 };
+
+  const entranceCol = randintInclusive(room1.left, room1.right, rng);
+  const entrancePos = [0, entranceCol];
+  ground[0][entranceCol] = CONFIG.DUNGEON_FLOOR;
+  const playerStart = [1, entranceCol];
+
+  const exitCol = randintInclusive(room2.left, room2.right, rng);
+  const exitPos = [rows - 1, exitCol];
+  ground[rows - 1][exitCol] = CONFIG.DUNGEON_FLOOR;
+
+  return {
+    ground,
+    rooms: [room1, room2],
+    entrancePos,
+    exitPos,
+    playerStart,
+    dividerRow,
+    openingCells,
+  };
+}
+
+function isWalkable(layout, row, col) {
+  return inBounds(row, col) && layout.ground[row][col] === CONFIG.DUNGEON_FLOOR;
+}
+
+function isWall(layout, row, col) {
+  return inBounds(row, col) && layout.ground[row][col] === CONFIG.DUNGEON_WALL;
+}
+
+function allWalkableConnected(layout) {
+  const floors = [];
+  for (let r = 0; r < CONFIG.BOARD_ROWS; r++) {
+    for (let c = 0; c < CONFIG.BOARD_COLS; c++) {
+      if (isWalkable(layout, r, c)) floors.push([r, c]);
+    }
+  }
+  if (!floors.length) return false;
+
+  const key = ([r, c]) => `${r},${c}`;
+  const floorSet = new Set(floors.map(key));
+  const seen = new Set([key(floors[0])]);
+  const stack = [floors[0]];
+  while (stack.length) {
+    const [r, c] = stack.pop();
+    for (const [dr, dc] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+      const n = [r + dr, c + dc];
+      const k = key(n);
+      if (floorSet.has(k) && !seen.has(k)) {
+        seen.add(k);
+        stack.push(n);
+      }
+    }
+  }
+  return seen.size === floorSet.size;
+}
+
+function generateItemGrid({ rows = CONFIG.BOARD_ROWS, cols = CONFIG.BOARD_COLS, rng = defaultRng } = {}) {
+  const grid = [];
+  for (let r = 0; r < rows; r++) {
+    const row = [];
+    for (let c = 0; c < cols; c++) {
+      const forbidden = new Set();
+      if (c >= 2 && row[c - 1] === row[c - 2]) forbidden.add(row[c - 1]);
+      if (r >= 2 && grid[r - 1][c] === grid[r - 2][c]) forbidden.add(grid[r - 1][c]);
+      const choices = CONFIG.ITEM_TYPES.filter((item) => !forbidden.has(item));
+      if (!choices.length) throw new Error("ITEM_TYPES cannot produce a stable starting board");
+      row.push(choice(choices, rng));
+    }
+    grid.push(row);
+  }
+  return grid;
+}
+
+function coordKey([r, c]) { return `${r},${c}`; }
+
+function maskedGrid(itemGrid, blockedCells = []) {
+  const blocked = new Set(blockedCells.map(coordKey));
+  return itemGrid.map((row, r) => row.map((item, c) => blocked.has(`${r},${c}`) ? null : item));
+}
+
+function findMatchRuns(grid) {
+  if (!grid.length || !grid[0].length) return [];
+  const rows = grid.length;
+  const cols = grid[0].length;
+  const runs = [];
+
+  for (let r = 0; r < rows; r++) {
+    let start = 0;
+    for (let c = 1; c <= cols; c++) {
+      const same = c < cols && grid[r][start] != null && grid[r][c] === grid[r][start];
+      if (!same) {
+        if (grid[r][start] != null && c - start >= 3) {
+          runs.push(Array.from({ length: c - start }, (_, i) => [r, start + i]));
+        }
+        start = c;
+      }
+    }
+  }
+
+  for (let c = 0; c < cols; c++) {
+    let start = 0;
+    for (let r = 1; r <= rows; r++) {
+      const same = r < rows && grid[start][c] != null && grid[r][c] === grid[start][c];
+      if (!same) {
+        if (grid[start]?.[c] != null && r - start >= 3) {
+          runs.push(Array.from({ length: r - start }, (_, i) => [start + i, c]));
+        }
+        start = r;
+      }
+    }
+  }
+  return runs;
+}
+
+function resourcesForRunLength(itemType, length) {
+  if (!(itemType in CONFIG.MATCH_REWARDS)) throw new Error(`Unknown resource: ${itemType}`);
+  if (length < 3) return 0;
+  return CONFIG.MATCH_REWARDS[itemType][Math.min(length, 5)];
+}
+
+function swapCells(grid, a, b) {
+  const [ar, ac] = a;
+  const [br, bc] = b;
+  [grid[ar][ac], grid[br][bc]] = [grid[br][bc], grid[ar][ac]];
+}
+
+function activatedRunsAfterSwap(grid, a, b, blockedCells = []) {
+  swapCells(grid, a, b);
+  try {
+    const runs = findMatchRuns(maskedGrid(grid, blockedCells));
+    const ak = coordKey(a), bk = coordKey(b);
+    return runs.filter((run) => run.some((p) => {
+      const k = coordKey(p);
+      return k === ak || k === bk;
+    }));
+  } finally {
+    swapCells(grid, a, b);
+  }
+}
+
+function resolveCascades(grid, { blockedCells = [], rewardCallback = null, rng = defaultRng } = {}) {
+  let waves = 0;
+  let totalRuns = 0;
+  let totalReplacements = 0;
+
+  while (true) {
+    const runs = findMatchRuns(maskedGrid(grid, blockedCells));
+    if (!runs.length) break;
+    waves += 1;
+    if (waves > CONFIG.MAX_CASCADE_WAVES) throw new Error("Cascade exceeded safety limit");
+
+    const rewards = [];
+    const matched = new Set();
+    for (const run of runs) {
+      const [fr, fc] = run[0];
+      rewards.push([grid[fr][fc], run.length]);
+      for (const pos of run) matched.add(coordKey(pos));
+    }
+    if (rewardCallback) for (const [kind, length] of rewards) rewardCallback(kind, length);
+
+    const ordered = [...matched]
+      .map((k) => k.split(",").map(Number))
+      .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    for (const [r, c] of ordered) grid[r][c] = choice(CONFIG.ITEM_TYPES, rng);
+
+    totalRuns += runs.length;
+    totalReplacements += ordered.length;
+  }
+
+  return { waves, runs: totalRuns, replacements: totalReplacements };
+}
+
+function startingResources() {
+  return { food: CONFIG.STARTING_FOOD, health: 0, attack: 0, gold: 0, bombs: 0 };
+}
+
+function grantRunReward(state, itemType, runLength) {
+  const gained = resourcesForRunLength(itemType, runLength);
+  state.stats.resourcesCollected[itemType] += gained;
+  state.score += gained;
+  state.resources[itemType] = Math.min(CONFIG.STORAGE_CAP, state.resources[itemType] + gained);
+}
+
+function buildMatchBoard(state) {
+  return maskedGrid(state.itemGrid, [[state.playerRow, state.playerCol]]);
+}
+
+function canPlayerMove(state, direction) {
+  const delta = DIRECTIONS[direction];
+  if (!delta) return false;
+  return isWalkable(state.dungeon, state.playerRow + delta[0], state.playerCol + delta[1]);
+}
+
+function swapTarget(fromRow, fromCol, direction) {
+  const delta = DIRECTIONS[direction];
+  return delta ? [fromRow + delta[0], fromCol + delta[1]] : null;
+}
+
+function swapIsBoardLegal(state, fromRow, fromCol, direction) {
+  const target = swapTarget(fromRow, fromCol, direction);
+  if (!target) return false;
+  const [tr, tc] = target;
+  if (!inBounds(fromRow, fromCol) || !inBounds(tr, tc)) return false;
+  if ((fromRow === state.playerRow && fromCol === state.playerCol) ||
+      (tr === state.playerRow && tc === state.playerCol)) return false;
+  return true;
+}
+
+function resolveAllMatches(state, rng = defaultRng) {
+  return resolveCascades(state.itemGrid, {
+    blockedCells: [[state.playerRow, state.playerCol]],
+    rewardCallback: (kind, length) => grantRunReward(state, kind, length),
+    rng,
+  });
+}
+
+function consumeFoodAfterMove(state) {
+  state.resources.food = Math.max(0, state.resources.food - 1);
+  if (state.gameWon) return;
+  if (state.resources.food === 0) {
+    state.lastMoveStarved = true;
+    state.hp = Math.max(0, state.hp - 1);
+    if (state.hp === 0) {
+      state.gameOver = true;
+      state.gameOverReason = "death";
+    }
+  }
+}
+
+function movePlayerOneStep(state, direction) {
+  const [dr, dc] = DIRECTIONS[direction];
+  state.playerRow += dr;
+  state.playerCol += dc;
+  state.stats.turns += 1;
+}
+
+function swapWouldMatch(state, row, col, direction) {
+  if (!swapIsBoardLegal(state, row, col, direction)) return false;
+  const target = swapTarget(row, col, direction);
+  return activatedRunsAfterSwap(
+    state.itemGrid,
+    [row, col],
+    target,
+    [[state.playerRow, state.playerCol]],
+  ).length > 0;
+}
+
+function hasLegalMatchMove(state) {
+  if (state.gameWon || state.gameOver) return false;
+  for (const direction of Object.keys(DIRECTIONS)) {
+    if (!canPlayerMove(state, direction)) continue;
+    for (let r = 0; r < CONFIG.BOARD_ROWS; r++) {
+      for (let c = 0; c < CONFIG.BOARD_COLS; c++) {
+        if (swapWouldMatch(state, r, c, direction)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function endIfNoMoves(state) {
+  if (!hasLegalMatchMove(state)) {
+    state.gameOver = true;
+    state.gameOverReason = "no_moves";
+  }
+}
+
+function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null } = {}) {
+  const layout = dungeonLayout ?? generateDungeon({ rng });
+  const state = {
+    dungeon: layout,
+    itemGrid: itemGrid ? itemGrid.map((row) => [...row]) : null,
+    playerRow: layout.playerStart[0],
+    playerCol: layout.playerStart[1],
+    resources: startingResources(),
+    hp: CONFIG.STARTING_HP,
+    score: 0,
+    gameOver: false,
+    gameWon: false,
+    gameOverReason: "",
+    lastMoveStarved: false,
+    lastMoveBlocked: false,
+    stats: {
+      turns: 0,
+      resourcesCollected: Object.fromEntries(CONFIG.ITEM_TYPES.map((item) => [item, 0])),
+    },
+  };
+
+  if (itemGrid) return state;
+
+  for (let i = 0; i < 250; i++) {
+    state.itemGrid = generateItemGrid({ rng });
+    if (hasLegalMatchMove(state)) return state;
+  }
+  throw new Error("Unable to generate a starting board with a legal move");
+}
+
+function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } = {}) {
+  state.lastMoveStarved = false;
+  state.lastMoveBlocked = false;
+
+  if (state.gameOver || state.gameWon) return false;
+  if (!(direction in DIRECTIONS)) return false;
+  if (!canPlayerMove(state, direction)) {
+    state.lastMoveBlocked = true;
+    return false;
+  }
+  if (!swapIsBoardLegal(state, fromRow, fromCol, direction)) return false;
+
+  const target = swapTarget(fromRow, fromCol, direction);
+  const a = [fromRow, fromCol];
+  const hero = [state.playerRow, state.playerCol];
+  const activated = activatedRunsAfterSwap(state.itemGrid, a, target, [hero]);
+  if (!activated.length) return false;
+
+  swapCells(state.itemGrid, a, target);
+  resolveAllMatches(state, rng);
+
+  movePlayerOneStep(state, direction);
+  resolveAllMatches(state, rng);
+
+  if (state.playerRow === state.dungeon.exitPos[0] && state.playerCol === state.dungeon.exitPos[1]) {
+    state.gameWon = true;
+    state.gameOverReason = "exit";
+  }
+
+  consumeFoodAfterMove(state);
+  if (!state.gameWon && !state.gameOver) endIfNoMoves(state);
+  return true;
+}
+
+function swipeDirection(dx, dy, minimum = CONFIG.MIN_SWIPE) {
+  if (Math.hypot(dx, dy) < minimum) return null;
+  const angle = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+  if (angle < 22.5 || angle >= 337.5) return "RIGHT";
+  if (angle < 67.5) return "DOWN_RIGHT";
+  if (angle < 112.5) return "DOWN";
+  if (angle < 157.5) return "DOWN_LEFT";
+  if (angle < 202.5) return "LEFT";
+  if (angle < 247.5) return "UP_LEFT";
+  if (angle < 292.5) return "UP";
+  return "UP_RIGHT";
+}
+
+
+
+
+const boardEl = document.querySelector("#board");
+const statusEl = document.querySelector("#status");
+const hpEl = document.querySelector("#hp");
+const resourcesEl = document.querySelector("#resources");
+const resultsEl = document.querySelector("#results");
+const newGameBtn = document.querySelector("#new-game");
+const flashEl = document.querySelector("#flash");
+
+let game = null;
+let pointerStart = null;
+
+function resetGame() {
+  game = newGame();
+  pointerStart = null;
+  render();
+}
+
+function statusText() {
+  if (game.gameWon) return "EXIT FOUND!";
+  if (game.gameOverReason === "no_moves") return "NO MOVES!";
+  if (game.gameOverReason === "death") return "YOU DIED!";
+  if (game.resources.food === 0) return "You are starving";
+  return "Swipe any adjacent pair • match = one step";
+}
+
+function resultsTitle() {
+  if (game.gameWon) return "FLOOR COMPLETE";
+  if (game.gameOverReason === "death") return "YOU DIED";
+  if (game.gameOverReason === "no_moves") return "NO MOVES";
+  return "GAME OVER";
+}
+
+function renderResults() {
+  if (!game.gameOver && !game.gameWon) {
+    resultsEl.classList.add("hidden");
+    resultsEl.innerHTML = "";
+    return;
+  }
+  const rows = CONFIG.ITEM_TYPES.map((kind) => {
+    const label = CONFIG.ITEM_LABEL[kind];
+    const color = CONFIG.ITEM_COLOR[kind];
+    const amount = game.stats.resourcesCollected[kind];
+    return `<div><span style="color:${color};font-weight:700">${label}</span> collected: ${amount}</div>`;
+  }).join("");
+  resultsEl.innerHTML = `
+    <div class="results-panel">
+      <h2>${resultsTitle()}</h2>
+      <div class="score">SCORE: ${game.score}</div>
+      <div class="results-list">${rows}</div>
+      <button id="overlay-new-game" type="button">New game</button>
+    </div>`;
+  resultsEl.classList.remove("hidden");
+  resultsEl.querySelector("#overlay-new-game").addEventListener("click", resetGame);
+}
+
+function renderHud() {
+  statusEl.textContent = statusText();
+  hpEl.textContent = `HP ${game.hp}`;
+  resourcesEl.innerHTML = CONFIG.ITEM_TYPES.map((kind) => `
+    <span class="resource-count">
+      <span style="color:${CONFIG.ITEM_COLOR[kind]};font-weight:700">${CONFIG.ITEM_LABEL[kind]}</span><span class="num">${game.resources[kind]}</span>
+    </span>`).join("");
+}
+
+function renderBoard() {
+  const heroRow = game.playerRow;
+  const heroCol = game.playerCol;
+  const frag = document.createDocumentFragment();
+  for (let row = 0; row < CONFIG.BOARD_ROWS; row++) {
+    for (let col = 0; col < CONFIG.BOARD_COLS; col++) {
+      const tile = document.createElement("div");
+      tile.className = `tile ${game.dungeon.ground[row][col]}`;
+      tile.dataset.row = row;
+      tile.dataset.col = col;
+
+      const isHero = row === heroRow && col === heroCol;
+      if (isHero) tile.classList.add("hero");
+
+      const item = game.itemGrid[row][col];
+      const resource = document.createElement("span");
+      resource.className = "resource";
+      resource.textContent = CONFIG.ITEM_LABEL[item];
+      resource.style.color = CONFIG.ITEM_COLOR[item];
+      tile.appendChild(resource);
+
+      if (row === game.dungeon.entrancePos[0] && col === game.dungeon.entrancePos[1]) {
+        const marker = document.createElement("span");
+        marker.className = "marker entrance";
+        marker.textContent = CONFIG.ENTRANCE_LABEL;
+        tile.appendChild(marker);
+      }
+      if (row === game.dungeon.exitPos[0] && col === game.dungeon.exitPos[1]) {
+        const marker = document.createElement("span");
+        marker.className = "marker exit";
+        marker.textContent = CONFIG.EXIT_LABEL;
+        tile.appendChild(marker);
+      }
+      if (isHero) {
+        const hero = document.createElement("span");
+        hero.className = "hero-mark";
+        tile.appendChild(hero);
+      }
+      frag.appendChild(tile);
+    }
+  }
+  boardEl.replaceChildren(frag);
+}
+
+function render() {
+  renderBoard();
+  renderHud();
+  renderResults();
+}
+
+function flash(kind) {
+  flashEl.className = "";
+  void flashEl.offsetWidth;
+  flashEl.className = kind;
+}
+
+function tileFromEventTarget(target) {
+  const tile = target.closest?.(".tile");
+  if (!tile || !boardEl.contains(tile)) return null;
+  return { row: Number(tile.dataset.row), col: Number(tile.dataset.col) };
+}
+
+boardEl.addEventListener("pointerdown", (event) => {
+  if (game.gameOver || game.gameWon) return;
+  const cell = tileFromEventTarget(event.target);
+  if (!cell) return;
+  pointerStart = {
+    ...cell,
+    x: event.clientX,
+    y: event.clientY,
+    pointerId: event.pointerId,
+  };
+  boardEl.setPointerCapture?.(event.pointerId);
+  event.preventDefault();
+});
+
+boardEl.addEventListener("pointerup", (event) => {
+  if (!pointerStart || event.pointerId !== pointerStart.pointerId) return;
+  event.preventDefault();
+  const dx = event.clientX - pointerStart.x;
+  const dy = event.clientY - pointerStart.y;
+  const direction = swipeDirection(dx, dy);
+  const { row, col } = pointerStart;
+  pointerStart = null;
+  if (!direction) return;
+
+  const moved = tryMatchMove(game, row, col, direction);
+  if (moved && game.lastMoveStarved) flash("starving");
+  else if (!moved && game.lastMoveBlocked) flash("blocked");
+  else if (!moved) flash("invalid");
+  render();
+});
+
+boardEl.addEventListener("pointercancel", () => { pointerStart = null; });
+boardEl.addEventListener("contextmenu", (event) => event.preventDefault());
+newGameBtn.addEventListener("click", resetGame);
+
+resetGame();
+
+  </script>
+</body>
+</html>
