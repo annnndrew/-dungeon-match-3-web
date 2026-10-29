@@ -101,6 +101,7 @@ button { font: inherit; }
   font-size: clamp(12px, 3.5vw, 15px);
 }
 #hp { color: #b4b4b4; }
+#hp .hp-value { color: #f06a6a; font-weight: 700; }
 .bottom-hud { min-height: 10px; }
 #resources { display: flex; flex-wrap: wrap; gap: 0 10px; }
 .resource-count .num { color: #b4b4b4; }
@@ -169,7 +170,7 @@ button { font: inherit; }
       <div id="results" class="results hidden" role="dialog" aria-modal="true"></div>
     </section>
 
-    <footer class="hud bottom-hud"><div id="version">web reset 1.2 • monsters + key</div></footer>
+    <footer class="hud bottom-hud"><div id="version">web reset 1.3 • monster combat</div></footer>
   </main>
 
   <script>
@@ -197,7 +198,7 @@ const CONFIG = {
   ENTRANCE_LABEL: "<",
   EXIT_LABEL: ">",
   STARTING_HP: 5,
-  STARTING_FOOD: 9,
+  STARTING_FOOD: 25,
   STORAGE_CAP: 9,
   MONSTER_START_COUNT: 3,
   MONSTER_HP: 3,
@@ -473,7 +474,9 @@ function grantRunReward(state, itemType, runLength) {
     state.hp = Math.min(CONFIG.STORAGE_CAP, state.hp + gained);
     return;
   }
-  state.resources[itemType] = Math.min(CONFIG.STORAGE_CAP, state.resources[itemType] + gained);
+  // Starting Food may exceed the collection cap; collecting F must not lower it.
+  state.resources[itemType] = Math.max(state.resources[itemType],
+    Math.min(CONFIG.STORAGE_CAP, state.resources[itemType] + gained));
   if (itemType === "monster" && state.resources.monster >= CONFIG.MONSTER_SPAWN_THRESHOLD) {
     state.resources.monster = 0;
     state.pendingSpawns++;
@@ -533,16 +536,16 @@ function moveMonsters(state, rng = defaultRng) {
   }
 }
 
-function resolveCombat(state, foughtThisTurn = new Set()) {
+function resolveProximityDamage(state, damagedThisTurn = new Set()) {
+  // Standing next to a monster hurts the player, never the monster.
+  // Each monster can damage the player only once per turn.
   for (const monster of state.monsters) {
-    if (foughtThisTurn.has(monster)) continue;
+    if (damagedThisTurn.has(monster)) continue;
     if (Math.max(Math.abs(monster.row-state.playerRow), Math.abs(monster.col-state.playerCol)) <= 1) {
-      foughtThisTurn.add(monster);
-      monster.hp -= 1;
+      damagedThisTurn.add(monster);
       state.hp = Math.max(0, state.hp - 1);
     }
   }
-  state.monsters = state.monsters.filter((m) => m.hp > 0);
   if (state.hp === 0) {
     state.gameOver = true;
     state.gameOverReason = "death";
@@ -552,7 +555,10 @@ function resolveCombat(state, foughtThisTurn = new Set()) {
 function processTriggers(state, rng = defaultRng) {
   while (state.pendingSpawns > 0) {
     state.pendingSpawns--;
-    spawnMonster(state,rng);
+    if (spawnMonster(state,rng)) {
+      state.stats.monstersSpawned++;
+      state.lastEvent = "MONSTER SPAWNED!";
+    }
   }
   if (state.pendingResets > 0) {
     state.pendingResets = 0;
@@ -574,7 +580,8 @@ function canPlayerMove(state, direction) {
   const delta = DIRECTIONS[direction];
   if (!delta) return false;
   const r = state.playerRow + delta[0], c = state.playerCol + delta[1];
-  return isWalkable(state.dungeon, r, c) && !monsterAt(state, r, c);
+  // Moving toward an occupied floor tile is an attack, not a blocked move.
+  return isWalkable(state.dungeon, r, c);
 }
 
 function swapTarget(fromRow, fromCol, direction) {
@@ -673,9 +680,11 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null } = {
     gameOverReason: "",
     lastMoveStarved: false,
     lastMoveBlocked: false,
+    lastEvent: "",
     stats: {
       turns: 0,
       boardResets: 0,
+      monstersSpawned: 0,
       resourcesCollected: Object.fromEntries(CONFIG.ITEM_TYPES.map((item) => [item, 0])),
     },
   };
@@ -704,6 +713,7 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null } = {
 function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } = {}) {
   state.lastMoveStarved = false;
   state.lastMoveBlocked = false;
+  state.lastEvent = "";
 
   if (state.gameOver || state.gameWon) return false;
   if (!(direction in DIRECTIONS)) return false;
@@ -720,13 +730,50 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
 
   swapCells(state.itemGrid, a, target);
   resolveAllMatches(state, rng);
-  movePlayerOneStep(state, direction);
-  if (keyIsAt(state,state.playerRow,state.playerCol)) state.hasKey = true;
-  resolveAllMatches(state, rng);
-  processTriggers(state,rng);
 
+  const [dr, dc] = DIRECTIONS[direction];
+  const destRow = state.playerRow + dr;
+  const destCol = state.playerCol + dc;
+  const defender = monsterAt(state, destRow, destCol);
+  const damagedThisTurn = new Set();
+  let moved = false;
+
+  if (defender) {
+    // Attacking consumes a turn even when the monster survives and blocks entry.
+    state.stats.turns++;
+    defender.hp--;
+    state.hp = Math.max(0, state.hp - 1);
+    damagedThisTurn.add(defender); // The attack already dealt its damage to the player.
+    if (defender.hp <= 0) {
+      state.monsters = state.monsters.filter((m) => m !== defender);
+      state.playerRow = destRow;
+      state.playerCol = destCol;
+      moved = true;
+      state.lastEvent = "MONSTER DEFEATED!";
+    } else {
+      state.lastEvent = `MONSTER HIT! ${defender.hp} HP LEFT`;
+    }
+  } else {
+    movePlayerOneStep(state, direction);
+    moved = true;
+  }
+
+  if (moved) {
+    if (keyIsAt(state, state.playerRow, state.playerCol)) {
+      state.hasKey = true;
+      state.lastEvent = "KEY FOUND!";
+    }
+    // The tile just vacated by the hero is matchable again.
+    resolveAllMatches(state, rng);
+  }
+  processTriggers(state, rng);
   consumeFoodAfterMove(state);
   if (state.gameOver) return true;
+  if (state.hp <= 0) {
+    state.gameOver = true;
+    state.gameOverReason = "death";
+    return true;
+  }
 
   if (state.playerRow === state.dungeon.exitPos[0] && state.playerCol === state.dungeon.exitPos[1] && state.hasKey) {
     state.gameWon = true;
@@ -734,11 +781,10 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
     return true;
   }
 
-  const foughtThisTurn = new Set();
-  resolveCombat(state, foughtThisTurn);
+  resolveProximityDamage(state, damagedThisTurn);
   if (!state.gameOver) {
-    moveMonsters(state,rng);
-    resolveCombat(state, foughtThisTurn);
+    moveMonsters(state, rng);
+    resolveProximityDamage(state, damagedThisTurn);
   }
   if (!state.gameOver) endIfNoMoves(state);
   return true;
@@ -782,6 +828,7 @@ function statusText() {
   if (game.gameOverReason === "no_moves") return "NO MOVES!";
   if (game.gameOverReason === "death") return "YOU DIED!";
   if (game.gameOverReason === "starvation") return "OUT OF FOOD!";
+  if (game.lastEvent) return game.lastEvent;
   return game.hasKey ? "Key found! Reach the exit" : "Swipe to match • collect K • exit >";
 }
 
@@ -809,7 +856,7 @@ function renderResults() {
     <div class="results-panel">
       <h2>${resultsTitle()}</h2>
       <div class="score">SCORE: ${game.score}</div>
-      <div class="results-list"><div>Turns: ${game.stats.turns}</div><div>Key: ${game.hasKey ? "Found" : "Missing"}</div><div>Board resets: ${game.stats.boardResets}</div>${rows}</div>
+      <div class="results-list"><div>Turns: ${game.stats.turns}</div><div>Key: ${game.hasKey ? "Found" : "Missing"}</div><div>Board resets: ${game.stats.boardResets}</div><div>Monsters spawned: ${game.stats.monstersSpawned}</div>${rows}</div>
       <button id="overlay-new-game" type="button">New game</button>
     </div>`;
   resultsEl.classList.remove("hidden");
@@ -818,7 +865,7 @@ function renderResults() {
 
 function renderHud() {
   statusEl.textContent = statusText();
-  hpEl.textContent = `HP ${game.hp} · TURN ${game.stats.turns} · KEY ${game.hasKey ? "✓" : "—"}`;
+  hpEl.innerHTML = `<span class="hp-value">HP ${game.hp}</span> · TURN ${game.stats.turns} · KEY ${game.hasKey ? "✓" : "—"} · ENEMIES ${game.monsters.length}`;
   resourcesEl.innerHTML = CONFIG.ITEM_TYPES.filter((kind) => kind !== "health").map((kind) => `
     <span class="resource-count">
       <span style="color:${CONFIG.ITEM_COLOR[kind]};font-weight:700">${CONFIG.ITEM_LABEL[kind]}</span><span class="num">${game.resources[kind]}</span>
