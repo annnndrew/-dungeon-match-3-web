@@ -92,8 +92,8 @@ button { font: inherit; }
   pointer-events: none;
 }
 
-.bottom-hud {
-  min-height: 54px;
+.stats-hud {
+  min-height: 38px;
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 4px 12px;
@@ -101,9 +101,14 @@ button { font: inherit; }
   font-size: clamp(12px, 3.5vw, 15px);
 }
 #hp { color: #b4b4b4; }
+.bottom-hud { min-height: 10px; }
 #resources { display: flex; flex-wrap: wrap; gap: 0 10px; }
 .resource-count .num { color: #b4b4b4; }
-#version { grid-column: 1 / -1; font-size: 10px; color: #666; text-align: right; }
+#version { font-size: 10px; color: #666; text-align: right; }
+.tile .monster-mark, .tile .key-mark { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 900; font-size: clamp(20px, 7vw, 33px); z-index: 3; pointer-events: none; }
+.tile .monster-mark { color: #fff0e6; background: #9d4140; border: 2px solid #d26d5e; border-radius: 3px; }
+.tile .key-mark { color: #17150b; background: #f5d36e; border: 2px solid #f9e8a7; border-radius: 3px; }
+.tile.monster-tile .resource, .tile.key-tile .resource { visibility: hidden; }
 
 #flash {
   position: fixed;
@@ -144,7 +149,7 @@ button { font: inherit; }
 @media (orientation: landscape) and (max-height: 540px) {
   #app { width: min(74vh, 520px); gap: 4px; padding-top: 4px; padding-bottom: 4px; }
   .top-hud { min-height: 28px; }
-  .bottom-hud { min-height: 38px; font-size: 11px; }
+  .stats-hud { min-height: 38px; font-size: 11px; }
   #version { display: none; }
 }
 
@@ -156,6 +161,7 @@ button { font: inherit; }
       <div id="status">Swipe any adjacent pair • match = one step</div>
       <button id="new-game" type="button">New game</button>
     </header>
+    <div class="hud stats-hud"><div id="hp">HP 5</div><div id="resources"></div></div>
 
     <section id="board-wrap" aria-label="Dungeon Match-3 board">
       <div id="board"></div>
@@ -163,11 +169,7 @@ button { font: inherit; }
       <div id="results" class="results hidden" role="dialog" aria-modal="true"></div>
     </section>
 
-    <footer class="hud bottom-hud">
-      <div id="hp">HP 5</div>
-      <div id="resources"></div>
-      <div id="version">web reset 1.1 • walls clear</div>
-    </footer>
+    <footer class="hud bottom-hud"><div id="version">web reset 1.2 • monsters + key</div></footer>
   </main>
 
   <script>
@@ -176,12 +178,12 @@ const CONFIG = {
   BOARD_ROWS: 11,
   ROOM_OPENING_MIN: 1,
   ROOM_OPENING_MAX: 3,
-  ITEM_TYPES: ["food", "health", "attack", "gold", "bombs"],
-  ITEM_LABEL: { food: "F", health: "H", attack: "A", gold: "G", bombs: "B" },
+  ITEM_TYPES: ["food", "health", "monster", "gold", "bombs"],
+  ITEM_LABEL: { food: "F", health: "H", monster: "M", gold: "G", bombs: "B" },
   ITEM_COLOR: {
     food: "rgb(220,130,60)",
     health: "rgb(230,90,90)",
-    attack: "rgb(120,90,200)",
+    monster: "rgb(120,90,200)",
     gold: "rgb(235,190,70)",
     bombs: "rgb(165,170,180)",
   },
@@ -195,14 +197,18 @@ const CONFIG = {
   ENTRANCE_LABEL: "<",
   EXIT_LABEL: ">",
   STARTING_HP: 5,
-  STARTING_FOOD: 25,
-  STORAGE_CAP: 99,
+  STARTING_FOOD: 9,
+  STORAGE_CAP: 9,
+  MONSTER_START_COUNT: 3,
+  MONSTER_HP: 3,
+  MONSTER_SPAWN_THRESHOLD: 5,
+  BOMB_RESET_THRESHOLD: 9,
   MIN_SWIPE: 18,
   MAX_CASCADE_WAVES: 250,
   MATCH_REWARDS: {
     food: { 3: 1, 4: 3, 5: 6 },
     health: { 3: 1, 4: 2, 5: 4 },
-    attack: { 3: 1, 4: 2, 5: 4 },
+    monster: { 3: 1, 4: 2, 5: 4 },
     gold: { 3: 1, 4: 2, 5: 4 },
     bombs: { 3: 1, 4: 2, 5: 4 },
   },
@@ -456,24 +462,119 @@ function resolveCascades(grid, { blockedCells = [], rewardCallback = null, rng =
 }
 
 function startingResources() {
-  return { food: CONFIG.STARTING_FOOD, health: 0, attack: 0, gold: 0, bombs: 0 };
+  return { food: CONFIG.STARTING_FOOD, monster: 0, gold: 0, bombs: 0 };
 }
 
 function grantRunReward(state, itemType, runLength) {
   const gained = resourcesForRunLength(itemType, runLength);
   state.stats.resourcesCollected[itemType] += gained;
   state.score += gained;
+  if (itemType === "health") {
+    state.hp = Math.min(CONFIG.STORAGE_CAP, state.hp + gained);
+    return;
+  }
   state.resources[itemType] = Math.min(CONFIG.STORAGE_CAP, state.resources[itemType] + gained);
+  if (itemType === "monster" && state.resources.monster >= CONFIG.MONSTER_SPAWN_THRESHOLD) {
+    state.resources.monster = 0;
+    state.pendingSpawns++;
+  }
+  if (itemType === "bombs" && state.resources.bombs >= CONFIG.BOMB_RESET_THRESHOLD) {
+    state.resources.bombs = 0;
+    state.pendingResets++;
+  }
+}
+
+function occupiedCells(state) {
+  const occupied = [[state.playerRow, state.playerCol], ...state.monsters.map((m) => [m.row, m.col])];
+  if (!state.hasKey) occupied.push(state.keyPos);
+  return occupied;
+}
+
+function monsterAt(state, row, col) {
+  return state.monsters.find((m) => m.row === row && m.col === col);
 }
 
 function buildMatchBoard(state) {
-  return maskedGrid(state.itemGrid, [[state.playerRow, state.playerCol]]);
+  return maskedGrid(state.itemGrid, occupiedCells(state));
+}
+
+function keyIsAt(state, row, col) {
+  return !state.hasKey && state.keyPos[0] === row && state.keyPos[1] === col;
+}
+
+function spawnMonster(state, rng = defaultRng) {
+  const candidates = [];
+  for (let r = 0; r < CONFIG.BOARD_ROWS; r++) {
+    for (let c = 0; c < CONFIG.BOARD_COLS; c++) {
+      if (!isWalkable(state.dungeon, r, c)) continue;
+      if (r === state.playerRow && c === state.playerCol) continue;
+      if (monsterAt(state, r, c) || keyIsAt(state, r, c)) continue;
+      if (coordKey([r,c]) === coordKey(state.dungeon.exitPos)) continue;
+      if (coordKey([r,c]) === coordKey(state.dungeon.entrancePos)) continue;
+      candidates.push([r,c]);
+    }
+  }
+  if (!candidates.length) return false;
+  const [row,col] = choice(candidates, rng);
+  state.monsters.push({ row, col, hp: CONFIG.MONSTER_HP });
+  return true;
+}
+
+function moveMonsters(state, rng = defaultRng) {
+  // Each monster attempts one random legal step in one of eight directions.
+  for (const monster of state.monsters) {
+    const options = Object.values(DIRECTIONS).map(([dr,dc]) => [monster.row+dr,monster.col+dc])
+      .filter(([r,c]) => isWalkable(state.dungeon,r,c)
+        && !(r === state.playerRow && c === state.playerCol)
+        && !monsterAt(state,r,c)
+        && !keyIsAt(state,r,c)
+        && coordKey([r,c]) !== coordKey(state.dungeon.exitPos));
+    if (options.length) [monster.row, monster.col] = choice(options,rng);
+  }
+}
+
+function resolveCombat(state, foughtThisTurn = new Set()) {
+  for (const monster of state.monsters) {
+    if (foughtThisTurn.has(monster)) continue;
+    if (Math.max(Math.abs(monster.row-state.playerRow), Math.abs(monster.col-state.playerCol)) <= 1) {
+      foughtThisTurn.add(monster);
+      monster.hp -= 1;
+      state.hp = Math.max(0, state.hp - 1);
+    }
+  }
+  state.monsters = state.monsters.filter((m) => m.hp > 0);
+  if (state.hp === 0) {
+    state.gameOver = true;
+    state.gameOverReason = "death";
+  }
+}
+
+function processTriggers(state, rng = defaultRng) {
+  while (state.pendingSpawns > 0) {
+    state.pendingSpawns--;
+    spawnMonster(state,rng);
+  }
+  if (state.pendingResets > 0) {
+    state.pendingResets = 0;
+    // Fresh resources on every floor cell; keep walls empty and occupants in place.
+    // Avoid free matches and prefer a board with at least one legal move.
+    let fallback = null;
+    for (let attempt = 0; attempt < 250; attempt++) {
+      const grid = generateItemGrid({ layout: state.dungeon, rng });
+      fallback = grid;
+      state.itemGrid = grid;
+      if (hasLegalMatchMove(state)) break;
+    }
+    state.itemGrid = fallback;
+    state.stats.boardResets++;
+  }
 }
 
 function canPlayerMove(state, direction) {
   const delta = DIRECTIONS[direction];
   if (!delta) return false;
-  return isWalkable(state.dungeon, state.playerRow + delta[0], state.playerCol + delta[1]);
+  const r = state.playerRow + delta[0], c = state.playerCol + delta[1];
+  return isWalkable(state.dungeon, r, c) && !monsterAt(state, r, c);
 }
 
 function swapTarget(fromRow, fromCol, direction) {
@@ -489,6 +590,8 @@ function swapIsBoardLegal(state, fromRow, fromCol, direction) {
   // A swap cannot start or end on a wall.
   if (!isWalkable(state.dungeon, fromRow, fromCol) ||
       !isWalkable(state.dungeon, tr, tc)) return false;
+  if (monsterAt(state, fromRow, fromCol) || monsterAt(state, tr, tc)) return false;
+  if (keyIsAt(state, fromRow, fromCol) || keyIsAt(state, tr, tc)) return false;
   if ((fromRow === state.playerRow && fromCol === state.playerCol) ||
       (tr === state.playerRow && tc === state.playerCol)) return false;
   return true;
@@ -496,7 +599,7 @@ function swapIsBoardLegal(state, fromRow, fromCol, direction) {
 
 function resolveAllMatches(state, rng = defaultRng) {
   return resolveCascades(state.itemGrid, {
-    blockedCells: [[state.playerRow, state.playerCol]],
+    blockedCells: occupiedCells(state),
     rewardCallback: (kind, length) => grantRunReward(state, kind, length),
     rng,
   });
@@ -504,14 +607,10 @@ function resolveAllMatches(state, rng = defaultRng) {
 
 function consumeFoodAfterMove(state) {
   state.resources.food = Math.max(0, state.resources.food - 1);
-  if (state.gameWon) return;
   if (state.resources.food === 0) {
     state.lastMoveStarved = true;
-    state.hp = Math.max(0, state.hp - 1);
-    if (state.hp === 0) {
-      state.gameOver = true;
-      state.gameOverReason = "death";
-    }
+    state.gameOver = true;
+    state.gameOverReason = "starvation";
   }
 }
 
@@ -529,7 +628,7 @@ function swapWouldMatch(state, row, col, direction) {
     state.itemGrid,
     [row, col],
     target,
-    [[state.playerRow, state.playerCol]],
+    occupiedCells(state),
   ).length > 0;
 }
 
@@ -564,6 +663,11 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null } = {
     resources: startingResources(),
     hp: CONFIG.STARTING_HP,
     score: 0,
+    monsters: [],
+    keyPos: null,
+    hasKey: false,
+    pendingSpawns: 0,
+    pendingResets: 0,
     gameOver: false,
     gameWon: false,
     gameOverReason: "",
@@ -571,10 +675,23 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null } = {
     lastMoveBlocked: false,
     stats: {
       turns: 0,
+      boardResets: 0,
       resourcesCollected: Object.fromEntries(CONFIG.ITEM_TYPES.map((item) => [item, 0])),
     },
   };
 
+  const keyCandidates = [];
+  for (let r = 0; r < CONFIG.BOARD_ROWS; r++) {
+    for (let c = 0; c < CONFIG.BOARD_COLS; c++) {
+      if (!isWalkable(layout,r,c)) continue;
+      if (r === state.playerRow && c === state.playerCol) continue;
+      if (coordKey([r,c]) === coordKey(layout.exitPos)) continue;
+      if (coordKey([r,c]) === coordKey(layout.entrancePos)) continue;
+      keyCandidates.push([r,c]);
+    }
+  }
+  state.keyPos = choice(keyCandidates,rng);
+  for (let i = 0; i < CONFIG.MONSTER_START_COUNT; i++) spawnMonster(state,rng);
   if (itemGrid) return state;
 
   for (let i = 0; i < 250; i++) {
@@ -598,23 +715,32 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
 
   const target = swapTarget(fromRow, fromCol, direction);
   const a = [fromRow, fromCol];
-  const hero = [state.playerRow, state.playerCol];
-  const activated = activatedRunsAfterSwap(state.itemGrid, a, target, [hero]);
+  const activated = activatedRunsAfterSwap(state.itemGrid, a, target, occupiedCells(state));
   if (!activated.length) return false;
 
   swapCells(state.itemGrid, a, target);
   resolveAllMatches(state, rng);
-
   movePlayerOneStep(state, direction);
+  if (keyIsAt(state,state.playerRow,state.playerCol)) state.hasKey = true;
   resolveAllMatches(state, rng);
-
-  if (state.playerRow === state.dungeon.exitPos[0] && state.playerCol === state.dungeon.exitPos[1]) {
-    state.gameWon = true;
-    state.gameOverReason = "exit";
-  }
+  processTriggers(state,rng);
 
   consumeFoodAfterMove(state);
-  if (!state.gameWon && !state.gameOver) endIfNoMoves(state);
+  if (state.gameOver) return true;
+
+  if (state.playerRow === state.dungeon.exitPos[0] && state.playerCol === state.dungeon.exitPos[1] && state.hasKey) {
+    state.gameWon = true;
+    state.gameOverReason = "exit";
+    return true;
+  }
+
+  const foughtThisTurn = new Set();
+  resolveCombat(state, foughtThisTurn);
+  if (!state.gameOver) {
+    moveMonsters(state,rng);
+    resolveCombat(state, foughtThisTurn);
+  }
+  if (!state.gameOver) endIfNoMoves(state);
   return true;
 }
 
@@ -655,13 +781,14 @@ function statusText() {
   if (game.gameWon) return "EXIT FOUND!";
   if (game.gameOverReason === "no_moves") return "NO MOVES!";
   if (game.gameOverReason === "death") return "YOU DIED!";
-  if (game.resources.food === 0) return "You are starving";
-  return "Swipe any adjacent pair • match = one step";
+  if (game.gameOverReason === "starvation") return "OUT OF FOOD!";
+  return game.hasKey ? "Key found! Reach the exit" : "Swipe to match • collect K • exit >";
 }
 
 function resultsTitle() {
   if (game.gameWon) return "FLOOR COMPLETE";
   if (game.gameOverReason === "death") return "YOU DIED";
+  if (game.gameOverReason === "starvation") return "OUT OF FOOD";
   if (game.gameOverReason === "no_moves") return "NO MOVES";
   return "GAME OVER";
 }
@@ -682,7 +809,7 @@ function renderResults() {
     <div class="results-panel">
       <h2>${resultsTitle()}</h2>
       <div class="score">SCORE: ${game.score}</div>
-      <div class="results-list">${rows}</div>
+      <div class="results-list"><div>Turns: ${game.stats.turns}</div><div>Key: ${game.hasKey ? "Found" : "Missing"}</div><div>Board resets: ${game.stats.boardResets}</div>${rows}</div>
       <button id="overlay-new-game" type="button">New game</button>
     </div>`;
   resultsEl.classList.remove("hidden");
@@ -691,8 +818,8 @@ function renderResults() {
 
 function renderHud() {
   statusEl.textContent = statusText();
-  hpEl.textContent = `HP ${game.hp}`;
-  resourcesEl.innerHTML = CONFIG.ITEM_TYPES.map((kind) => `
+  hpEl.textContent = `HP ${game.hp} · TURN ${game.stats.turns} · KEY ${game.hasKey ? "✓" : "—"}`;
+  resourcesEl.innerHTML = CONFIG.ITEM_TYPES.filter((kind) => kind !== "health").map((kind) => `
     <span class="resource-count">
       <span style="color:${CONFIG.ITEM_COLOR[kind]};font-weight:700">${CONFIG.ITEM_LABEL[kind]}</span><span class="num">${game.resources[kind]}</span>
     </span>`).join("");
@@ -732,6 +859,21 @@ function renderBoard() {
         marker.className = "marker exit";
         marker.textContent = CONFIG.EXIT_LABEL;
         tile.appendChild(marker);
+      }
+      if (keyIsAt(game,row,col)) {
+        tile.classList.add("key-tile");
+        const key = document.createElement("span");
+        key.className = "key-mark";
+        key.textContent = "K";
+        tile.appendChild(key);
+      }
+      const monster = monsterAt(game,row,col);
+      if (monster) {
+        tile.classList.add("monster-tile");
+        const mark = document.createElement("span");
+        mark.className = "monster-mark";
+        mark.textContent = String(monster.hp);
+        tile.appendChild(mark);
       }
       if (isHero) {
         const hero = document.createElement("span");
