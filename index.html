@@ -166,7 +166,7 @@ button { font: inherit; }
     <footer class="hud bottom-hud">
       <div id="hp">HP 5</div>
       <div id="resources"></div>
-      <div id="version">web reset 1 • single-file</div>
+      <div id="version">web reset 1.1 • walls clear</div>
     </footer>
   </main>
 
@@ -334,11 +334,16 @@ function allWalkableConnected(layout) {
   return seen.size === floorSet.size;
 }
 
-function generateItemGrid({ rows = CONFIG.BOARD_ROWS, cols = CONFIG.BOARD_COLS, rng = defaultRng } = {}) {
+function generateItemGrid({ layout = null, rows = CONFIG.BOARD_ROWS, cols = CONFIG.BOARD_COLS, rng = defaultRng } = {}) {
   const grid = [];
   for (let r = 0; r < rows; r++) {
     const row = [];
     for (let c = 0; c < cols; c++) {
+      // Walls are terrain only: they have no resource and break match runs.
+      if (layout && !isWalkable(layout, r, c)) {
+        row.push(null);
+        continue;
+      }
       const forbidden = new Set();
       if (c >= 2 && row[c - 1] === row[c - 2]) forbidden.add(row[c - 1]);
       if (r >= 2 && grid[r - 1][c] === grid[r - 2][c]) forbidden.add(grid[r - 1][c]);
@@ -481,6 +486,9 @@ function swapIsBoardLegal(state, fromRow, fromCol, direction) {
   if (!target) return false;
   const [tr, tc] = target;
   if (!inBounds(fromRow, fromCol) || !inBounds(tr, tc)) return false;
+  // A swap cannot start or end on a wall.
+  if (!isWalkable(state.dungeon, fromRow, fromCol) ||
+      !isWalkable(state.dungeon, tr, tc)) return false;
   if ((fromRow === state.playerRow && fromCol === state.playerCol) ||
       (tr === state.playerRow && tc === state.playerCol)) return false;
   return true;
@@ -549,7 +557,8 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null } = {
   const layout = dungeonLayout ?? generateDungeon({ rng });
   const state = {
     dungeon: layout,
-    itemGrid: itemGrid ? itemGrid.map((row) => [...row]) : null,
+    itemGrid: itemGrid ? itemGrid.map((row, r) =>
+      row.map((item, c) => isWalkable(layout, r, c) ? item : null)) : null,
     playerRow: layout.playerStart[0],
     playerCol: layout.playerStart[1],
     resources: startingResources(),
@@ -569,7 +578,7 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null } = {
   if (itemGrid) return state;
 
   for (let i = 0; i < 250; i++) {
-    state.itemGrid = generateItemGrid({ rng });
+    state.itemGrid = generateItemGrid({ layout, rng });
     if (hasLegalMatchMove(state)) return state;
   }
   throw new Error("Unable to generate a starting board with a legal move");
@@ -704,11 +713,13 @@ function renderBoard() {
       if (isHero) tile.classList.add("hero");
 
       const item = game.itemGrid[row][col];
-      const resource = document.createElement("span");
-      resource.className = "resource";
-      resource.textContent = CONFIG.ITEM_LABEL[item];
-      resource.style.color = CONFIG.ITEM_COLOR[item];
-      tile.appendChild(resource);
+      if (item !== null) {
+        const resource = document.createElement("span");
+        resource.className = "resource";
+        resource.textContent = CONFIG.ITEM_LABEL[item];
+        resource.style.color = CONFIG.ITEM_COLOR[item];
+        tile.appendChild(resource);
+      }
 
       if (row === game.dungeon.entrancePos[0] && col === game.dungeon.entrancePos[1]) {
         const marker = document.createElement("span");
