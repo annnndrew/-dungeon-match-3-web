@@ -35,7 +35,9 @@ button { font: inherit; }
 
 .hud { width: 100%; }
 .top-hud { display: flex; align-items: center; gap: 8px; min-height: 34px; }
-#status { flex: 1; font-size: clamp(11px, 3vw, 14px); line-height: 1.2; color: #ddd; }
+#status { font-size: clamp(11px, 3vw, 13px); line-height: 1.2; color: #b7b7c5; }
+.game-title { flex: 1; font-size: 12px; font-weight: 800; letter-spacing: .09em; color: #c6c6d0; }
+.game-status { min-height: 16px; text-align: center; }
 #new-game {
   border: 1px solid #555b66;
   background: #1b1d24;
@@ -93,21 +95,27 @@ button { font: inherit; }
 }
 
 .stats-hud {
-  min-height: 38px;
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 4px 12px;
-  align-items: baseline;
+  min-height: 58px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: stretch;
   font-size: clamp(12px, 3.5vw, 15px);
 }
-#hp { color: #b4b4b4; }
-#hp .hp-value { color: #f06a6a; font-weight: 700; }
+#hp { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
+#hp .hp-value { color: #f06a6a; font-weight: 800; }
+#hp .food-value { color: rgb(220,130,60); font-weight: 800; }
+#hp .score-value { color: #f5d36e; font-weight: 800; }
+#hp .key-value { color: #e4d0a0; font-weight: 700; }
 .bottom-hud { min-height: 10px; }
-#resources { display: flex; flex-wrap: wrap; gap: 0 10px; }
+#resources { display: flex; flex-wrap: wrap; gap: 3px 13px; align-items: baseline; }
+.resource-count { white-space: nowrap; }
+.resource-count .name { color: #a7a7b3; font-size: .85em; }
 .resource-count .num { color: #b4b4b4; }
 #version { font-size: 10px; color: #666; text-align: right; }
 .tile .monster-mark, .tile .key-mark { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 900; font-size: clamp(20px, 7vw, 33px); z-index: 3; pointer-events: none; }
 .tile .monster-mark { color: #fff0e6; background: #9d4140; border: 2px solid #d26d5e; border-radius: 3px; }
+.tile.aggro .monster-mark { border-color: #ffd07b; box-shadow: inset 0 0 0 1px #ffd07b; }
 .tile .key-mark { color: #17150b; background: #f5d36e; border: 2px solid #f9e8a7; border-radius: 3px; }
 .tile.monster-tile .resource, .tile.key-tile .resource { visibility: hidden; }
 
@@ -144,6 +152,7 @@ button { font: inherit; }
 }
 .results-panel h2 { margin: 0 0 8px; font-size: 26px; }
 .results-panel .score { font-size: 21px; margin-bottom: 14px; }
+.escape-bonus { color: #f5d36e; font-size: 12px; margin-top: 5px; }
 .results-list { display: grid; gap: 5px; text-align: left; margin: 0 auto 16px; width: fit-content; }
 .results-panel button { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #656575; background: #272731; color: #eee; }
 
@@ -159,10 +168,14 @@ button { font: inherit; }
 <body>
   <main id="app">
     <header class="hud top-hud">
-      <div id="status">Swipe any adjacent pair • match = one step</div>
+      <div class="game-title">DUNGEON MATCH</div>
       <button id="new-game" type="button">New game</button>
     </header>
-    <div class="hud stats-hud"><div id="hp">HP 5</div><div id="resources"></div></div>
+    <div class="hud stats-hud">
+      <div id="hp">HP 5</div>
+      <div id="resources"></div>
+    </div>
+    <div id="status" class="hud game-status">Find the key, then escape.</div>
 
     <section id="board-wrap" aria-label="Dungeon Match-3 board">
       <div id="board"></div>
@@ -170,7 +183,7 @@ button { font: inherit; }
       <div id="results" class="results hidden" role="dialog" aria-modal="true"></div>
     </section>
 
-    <footer class="hud bottom-hud"><div id="version">web reset 1.4 • wall matches + monster spawns</div></footer>
+    <footer class="hud bottom-hud"><div id="version">web reset 1.5 • pursuit + escape bonus</div></footer>
   </main>
 
   <script>
@@ -180,13 +193,13 @@ const CONFIG = {
   ROOM_OPENING_MIN: 1,
   ROOM_OPENING_MAX: 3,
   ITEM_TYPES: ["food", "health", "monster", "gold", "bombs"],
-  ITEM_LABEL: { food: "F", health: "H", monster: "M", gold: "G", bombs: "B" },
+  ITEM_LABEL: { food: "F", health: "H", monster: "✥", gold: "G", bombs: "B" },
   ITEM_COLOR: {
     food: "rgb(220,130,60)",
     health: "rgb(230,90,90)",
-    monster: "rgb(120,90,200)",
+    monster: "rgb(91,216,174)",
     gold: "rgb(235,190,70)",
-    bombs: "rgb(165,170,180)",
+    bombs: "rgb(185,118,247)",
   },
   DUNGEON_FLOOR: "floor",
   DUNGEON_WALL: "wall",
@@ -202,7 +215,7 @@ const CONFIG = {
   STORAGE_CAP: 9,
   MONSTER_START_COUNT: 3,
   MONSTER_HP: 3,
-  BOMB_RESET_THRESHOLD: 9,
+  BOMB_RESET_THRESHOLD: 9, // Magic: keep the threshold until the reset mechanic is redesigned.
   MIN_SWIPE: 18,
   MAX_CASCADE_WAVES: 250,
   MATCH_REWARDS: {
@@ -520,7 +533,7 @@ function spawnMonster(state, rng = defaultRng) {
   }
   if (!candidates.length) return false;
   const [row,col] = choice(candidates, rng);
-  state.monsters.push({ row, col, hp: CONFIG.MONSTER_HP });
+  state.monsters.push({ row, col, hp: CONFIG.MONSTER_HP, aggro: false });
   return true;
 }
 
@@ -533,7 +546,18 @@ function moveMonsters(state, rng = defaultRng) {
         && !monsterAt(state,r,c)
         && !keyIsAt(state,r,c)
         && coordKey([r,c]) !== coordKey(state.dungeon.exitPos));
-    if (options.length) [monster.row, monster.col] = choice(options,rng);
+    if (options.length) {
+      if (monster.aggro) {
+        // Once attacked, pursue the hero rather than wandering at random.
+        // Choose a legal one-tile step that minimizes distance to the hero.
+        const distance = ([r,c]) => Math.max(Math.abs(r-state.playerRow), Math.abs(c-state.playerCol));
+        const bestDistance = Math.min(...options.map(distance));
+        const best = options.filter((pos) => distance(pos) === bestDistance);
+        [monster.row, monster.col] = choice(best, rng);
+      } else {
+        [monster.row, monster.col] = choice(options, rng);
+      }
+    }
   }
 }
 
@@ -749,6 +773,7 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
     // Attacking consumes a turn even when the monster survives and blocks entry.
     state.stats.turns++;
     defender.hp--;
+    defender.aggro = true;
     state.hp = Math.max(0, state.hp - 1);
     damagedThisTurn.add(defender); // The attack already dealt its damage to the player.
     if (defender.hp <= 0) {
@@ -784,6 +809,7 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
 
   if (state.playerRow === state.dungeon.exitPos[0] && state.playerCol === state.dungeon.exitPos[1] && state.hasKey) {
     state.gameWon = true;
+    state.score *= 3; // Escape bonus applies to the entire match score.
     state.gameOverReason = "exit";
     return true;
   }
@@ -834,12 +860,12 @@ function resetGame() {
 }
 
 function statusText() {
-  if (game.gameWon) return "EXIT FOUND!";
+  if (game.gameWon) return "ESCAPED! SCORE ×3";
   if (game.gameOverReason === "no_moves") return "NO MOVES!";
   if (game.gameOverReason === "death") return "YOU DIED!";
   if (game.gameOverReason === "starvation") return "OUT OF FOOD!";
   if (game.lastEvent) return game.lastEvent;
-  return game.hasKey ? "Key found! Reach the exit" : "Swipe to match • collect K • exit >";
+  return game.hasKey ? "Key found — reach the exit >" : "Find the key K, then reach exit >";
 }
 
 function resultsTitle() {
@@ -865,7 +891,7 @@ function renderResults() {
   resultsEl.innerHTML = `
     <div class="results-panel">
       <h2>${resultsTitle()}</h2>
-      <div class="score">SCORE: ${game.score}</div>
+      <div class="score">SCORE: ${game.score}${game.gameWon ? `<div class="escape-bonus">Escape bonus ×3 (matches: ${game.score / 3})</div>` : ""}</div>
       <div class="results-list"><div>Turns: ${game.stats.turns}</div><div>Key: ${game.hasKey ? "Found" : "Missing"}</div><div>Board resets: ${game.stats.boardResets}</div><div>Monsters spawned: ${game.stats.monstersSpawned}</div>${rows}</div>
       <button id="overlay-new-game" type="button">New game</button>
     </div>`;
@@ -875,11 +901,8 @@ function renderResults() {
 
 function renderHud() {
   statusEl.textContent = statusText();
-  hpEl.innerHTML = `<span class="hp-value">HP ${game.hp}</span> · TURN ${game.stats.turns} · KEY ${game.hasKey ? "✓" : "—"} · ENEMIES ${game.monsters.length}`;
-  resourcesEl.innerHTML = CONFIG.ITEM_TYPES.filter((kind) => kind !== "health" && kind !== "monster").map((kind) => `
-    <span class="resource-count">
-      <span style="color:${CONFIG.ITEM_COLOR[kind]};font-weight:700">${CONFIG.ITEM_LABEL[kind]}</span><span class="num">${game.resources[kind]}</span>
-    </span>`).join("");
+  hpEl.innerHTML = `<span class="hp-value">♥ ${game.hp}/9</span><span class="food-value">F ${game.resources.food}</span><span class="key-value">KEY ${game.hasKey ? "✓" : "—"}</span><span class="score-value">SCORE ${game.score}</span>`;
+  resourcesEl.innerHTML = `<span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.gold};font-weight:800">G ${game.resources.gold}</span> <span class="name">Gold</span></span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:800">B ${game.resources.bombs}/${CONFIG.BOMB_RESET_THRESHOLD}</span> <span class="name">Magic</span></span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.monster};font-weight:800">${CONFIG.ITEM_LABEL.monster}</span> <span class="name">Summon</span></span><span class="resource-count"><span class="name">Enemies ${game.monsters.length}</span></span>`;
 }
 
 function renderBoard() {
@@ -927,6 +950,7 @@ function renderBoard() {
       const monster = monsterAt(game,row,col);
       if (monster) {
         tile.classList.add("monster-tile");
+        if (monster.aggro) tile.classList.add("aggro");
         const mark = document.createElement("span");
         mark.className = "monster-mark";
         mark.textContent = String(monster.hp);
