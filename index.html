@@ -170,7 +170,7 @@ button { font: inherit; }
       <div id="results" class="results hidden" role="dialog" aria-modal="true"></div>
     </section>
 
-    <footer class="hud bottom-hud"><div id="version">web reset 1.3 • monster combat</div></footer>
+    <footer class="hud bottom-hud"><div id="version">web reset 1.4 • wall matches + monster spawns</div></footer>
   </main>
 
   <script>
@@ -202,14 +202,13 @@ const CONFIG = {
   STORAGE_CAP: 9,
   MONSTER_START_COUNT: 3,
   MONSTER_HP: 3,
-  MONSTER_SPAWN_THRESHOLD: 5,
   BOMB_RESET_THRESHOLD: 9,
   MIN_SWIPE: 18,
   MAX_CASCADE_WAVES: 250,
   MATCH_REWARDS: {
     food: { 3: 1, 4: 3, 5: 6 },
     health: { 3: 1, 4: 2, 5: 4 },
-    monster: { 3: 1, 4: 2, 5: 4 },
+    monster: { 3: 1, 4: 2, 5: 5 },
     gold: { 3: 1, 4: 2, 5: 4 },
     bombs: { 3: 1, 4: 2, 5: 4 },
   },
@@ -346,11 +345,8 @@ function generateItemGrid({ layout = null, rows = CONFIG.BOARD_ROWS, cols = CONF
   for (let r = 0; r < rows; r++) {
     const row = [];
     for (let c = 0; c < cols; c++) {
-      // Walls are terrain only: they have no resource and break match runs.
-      if (layout && !isWalkable(layout, r, c)) {
-        row.push(null);
-        continue;
-      }
+      // Match resources cover the entire grid, including walls.
+      // Dungeon terrain still controls where the hero and monsters can move.
       const forbidden = new Set();
       if (c >= 2 && row[c - 1] === row[c - 2]) forbidden.add(row[c - 1]);
       if (r >= 2 && grid[r - 1][c] === grid[r - 2][c]) forbidden.add(grid[r - 1][c]);
@@ -430,13 +426,14 @@ function activatedRunsAfterSwap(grid, a, b, blockedCells = []) {
   }
 }
 
-function resolveCascades(grid, { blockedCells = [], rewardCallback = null, rng = defaultRng } = {}) {
+function resolveCascades(grid, { blockedCells = [], rewardCallback = null, afterWave = null, rng = defaultRng } = {}) {
   let waves = 0;
   let totalRuns = 0;
   let totalReplacements = 0;
 
   while (true) {
-    const runs = findMatchRuns(maskedGrid(grid, blockedCells));
+    const currentBlocked = typeof blockedCells === "function" ? blockedCells() : blockedCells;
+    const runs = findMatchRuns(maskedGrid(grid, currentBlocked));
     if (!runs.length) break;
     waves += 1;
     if (waves > CONFIG.MAX_CASCADE_WAVES) throw new Error("Cascade exceeded safety limit");
@@ -454,6 +451,8 @@ function resolveCascades(grid, { blockedCells = [], rewardCallback = null, rng =
       .map((k) => k.split(",").map(Number))
       .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
     for (const [r, c] of ordered) grid[r][c] = choice(CONFIG.ITEM_TYPES, rng);
+    // Spawn new enemies and handle bomb resets before checking the next cascade.
+    if (afterWave) afterWave();
 
     totalRuns += runs.length;
     totalReplacements += ordered.length;
@@ -474,13 +473,15 @@ function grantRunReward(state, itemType, runLength) {
     state.hp = Math.min(CONFIG.STORAGE_CAP, state.hp + gained);
     return;
   }
+  if (itemType === "monster") {
+    // M is no longer a stored resource: every match immediately creates enemies.
+    // 3 M -> 1, 4 M -> 2, 5+ M -> 5.
+    state.pendingSpawns += gained;
+    return;
+  }
   // Starting Food may exceed the collection cap; collecting F must not lower it.
   state.resources[itemType] = Math.max(state.resources[itemType],
     Math.min(CONFIG.STORAGE_CAP, state.resources[itemType] + gained));
-  if (itemType === "monster" && state.resources.monster >= CONFIG.MONSTER_SPAWN_THRESHOLD) {
-    state.resources.monster = 0;
-    state.pendingSpawns++;
-  }
   if (itemType === "bombs" && state.resources.bombs >= CONFIG.BOMB_RESET_THRESHOLD) {
     state.resources.bombs = 0;
     state.pendingResets++;
@@ -552,7 +553,7 @@ function resolveProximityDamage(state, damagedThisTurn = new Set()) {
   }
 }
 
-function processTriggers(state, rng = defaultRng) {
+function processTriggers(state, rng = defaultRng, { allowReset = true } = {}) {
   while (state.pendingSpawns > 0) {
     state.pendingSpawns--;
     if (spawnMonster(state,rng)) {
@@ -560,9 +561,9 @@ function processTriggers(state, rng = defaultRng) {
       state.lastEvent = "MONSTER SPAWNED!";
     }
   }
-  if (state.pendingResets > 0) {
+  if (allowReset && state.pendingResets > 0) {
     state.pendingResets = 0;
-    // Fresh resources on every floor cell; keep walls empty and occupants in place.
+    // Fresh resources on every cell, walls included; occupants remain in place.
     // Avoid free matches and prefer a board with at least one legal move.
     let fallback = null;
     for (let attempt = 0; attempt < 250; attempt++) {
@@ -594,9 +595,7 @@ function swapIsBoardLegal(state, fromRow, fromCol, direction) {
   if (!target) return false;
   const [tr, tc] = target;
   if (!inBounds(fromRow, fromCol) || !inBounds(tr, tc)) return false;
-  // A swap cannot start or end on a wall.
-  if (!isWalkable(state.dungeon, fromRow, fromCol) ||
-      !isWalkable(state.dungeon, tr, tc)) return false;
+  // Swaps may involve wall tiles, although neither hero nor monsters can enter walls.
   if (monsterAt(state, fromRow, fromCol) || monsterAt(state, tr, tc)) return false;
   if (keyIsAt(state, fromRow, fromCol) || keyIsAt(state, tr, tc)) return false;
   if ((fromRow === state.playerRow && fromCol === state.playerCol) ||
@@ -605,11 +604,16 @@ function swapIsBoardLegal(state, fromRow, fromCol, direction) {
 }
 
 function resolveAllMatches(state, rng = defaultRng) {
-  return resolveCascades(state.itemGrid, {
-    blockedCells: occupiedCells(state),
+  const outcome = resolveCascades(state.itemGrid, {
+    blockedCells: () => occupiedCells(state),
     rewardCallback: (kind, length) => grantRunReward(state, kind, length),
+    // Spawn after each wave so new monsters can block matches in the next wave.
+    // B resets wait until the cascade is complete, avoiding stale grid references.
+    afterWave: () => processTriggers(state, rng, { allowReset: false }),
     rng,
   });
+  processTriggers(state, rng);
+  return outcome;
 }
 
 function consumeFoodAfterMove(state) {
@@ -663,8 +667,7 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null } = {
   const layout = dungeonLayout ?? generateDungeon({ rng });
   const state = {
     dungeon: layout,
-    itemGrid: itemGrid ? itemGrid.map((row, r) =>
-      row.map((item, c) => isWalkable(layout, r, c) ? item : null)) : null,
+    itemGrid: itemGrid ? itemGrid.map((row) => [...row]) : null,
     playerRow: layout.playerStart[0],
     playerCol: layout.playerStart[1],
     resources: startingResources(),
@@ -701,7 +704,11 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null } = {
   }
   state.keyPos = choice(keyCandidates,rng);
   for (let i = 0; i < CONFIG.MONSTER_START_COUNT; i++) spawnMonster(state,rng);
-  if (itemGrid) return state;
+  if (itemGrid) {
+    // Custom or restored boards may already contain natural three-in-a-row matches.
+    resolveAllMatches(state, rng);
+    return state;
+  }
 
   for (let i = 0; i < 250; i++) {
     state.itemGrid = generateItemGrid({ layout, rng });
@@ -785,6 +792,9 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
   if (!state.gameOver) {
     moveMonsters(state, rng);
     resolveProximityDamage(state, damagedThisTurn);
+    // A monster can move away and reveal an ordinary three-in-a-row.
+    // Resolve it automatically; no player swap is needed.
+    if (!state.gameOver) resolveAllMatches(state, rng);
   }
   if (!state.gameOver) endIfNoMoves(state);
   return true;
@@ -866,7 +876,7 @@ function renderResults() {
 function renderHud() {
   statusEl.textContent = statusText();
   hpEl.innerHTML = `<span class="hp-value">HP ${game.hp}</span> · TURN ${game.stats.turns} · KEY ${game.hasKey ? "✓" : "—"} · ENEMIES ${game.monsters.length}`;
-  resourcesEl.innerHTML = CONFIG.ITEM_TYPES.filter((kind) => kind !== "health").map((kind) => `
+  resourcesEl.innerHTML = CONFIG.ITEM_TYPES.filter((kind) => kind !== "health" && kind !== "monster").map((kind) => `
     <span class="resource-count">
       <span style="color:${CONFIG.ITEM_COLOR[kind]};font-weight:700">${CONFIG.ITEM_LABEL[kind]}</span><span class="num">${game.resources[kind]}</span>
     </span>`).join("");
