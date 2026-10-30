@@ -83,6 +83,9 @@ button { font: inherit; }
   pointer-events: none;
 }
 .tile .marker.entrance { left: 4px; color: rgb(145,185,195); }
+.tile.entrance-tile { background: #263943; border: 1px solid #6c97a5; }
+.tile.entrance-tile .marker.entrance { left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: clamp(16px, 5vw, 26px); }
+.tile.entrance-tile.hero .marker.entrance { opacity: .45; }
 .tile .marker.exit { right: 4px; color: rgb(225,205,120); }
 .tile.hero .resource { visibility: hidden; }
 .tile .hero-mark {
@@ -183,7 +186,7 @@ button { font: inherit; }
       <div id="results" class="results hidden" role="dialog" aria-modal="true"></div>
     </section>
 
-    <footer class="hud bottom-hud"><div id="version">web reset 1.5 • pursuit + escape bonus</div></footer>
+    <footer class="hud bottom-hud"><div id="version">web reset 1.6 • energy + engaged enemies</div></footer>
   </main>
 
   <script>
@@ -193,7 +196,7 @@ const CONFIG = {
   ROOM_OPENING_MIN: 1,
   ROOM_OPENING_MAX: 3,
   ITEM_TYPES: ["food", "health", "monster", "gold", "bombs"],
-  ITEM_LABEL: { food: "F", health: "H", monster: "✥", gold: "G", bombs: "B" },
+  ITEM_LABEL: { food: "ϟ", health: "♥", monster: "✥", gold: "G", bombs: "✦" },
   ITEM_COLOR: {
     food: "rgb(220,130,60)",
     health: "rgb(230,90,90)",
@@ -215,7 +218,7 @@ const CONFIG = {
   STORAGE_CAP: 9,
   MONSTER_START_COUNT: 3,
   MONSTER_HP: 3,
-  BOMB_RESET_THRESHOLD: 9, // Magic: keep the threshold until the reset mechanic is redesigned.
+  BOMB_RESET_THRESHOLD: 9, // Magic board refresh threshold, unchanged.
   MIN_SWIPE: 18,
   MAX_CASCADE_WAVES: 250,
   MATCH_REWARDS: {
@@ -301,7 +304,7 @@ function generateDungeon({ rng = defaultRng, openingWidth = null } = {}) {
   const entranceCol = randintInclusive(room1.left, room1.right, rng);
   const entrancePos = [0, entranceCol];
   ground[0][entranceCol] = CONFIG.DUNGEON_FLOOR;
-  const playerStart = [1, entranceCol];
+  const playerStart = [...entrancePos];
 
   const exitCol = randintInclusive(room2.left, room2.right, rng);
   const exitPos = [rows - 1, exitCol];
@@ -358,8 +361,11 @@ function generateItemGrid({ layout = null, rows = CONFIG.BOARD_ROWS, cols = CONF
   for (let r = 0; r < rows; r++) {
     const row = [];
     for (let c = 0; c < cols; c++) {
-      // Match resources cover the entire grid, including walls.
-      // Dungeon terrain still controls where the hero and monsters can move.
+      // Walls are matchable; the entrance itself is a permanent, empty terrain tile.
+      if (layout && r === layout.entrancePos[0] && c === layout.entrancePos[1]) {
+        row.push(null);
+        continue;
+      }
       const forbidden = new Set();
       if (c >= 2 && row[c - 1] === row[c - 2]) forbidden.add(row[c - 1]);
       if (r >= 2 && grid[r - 1][c] === grid[r - 2][c]) forbidden.add(grid[r - 1][c]);
@@ -537,33 +543,57 @@ function spawnMonster(state, rng = defaultRng) {
   return true;
 }
 
-function moveMonsters(state, rng = defaultRng) {
-  // Each monster attempts one random legal step in one of eight directions.
+function chaseStep(state, monster, rng = defaultRng) {
+  // Engaged monsters use a shortest path across floor tiles, rather than
+  // random movement or greedy steps that get stuck behind the room divider.
+  // Once in striking range they hold position; movement never deals damage.
+  const distance = (r,c) => Math.max(Math.abs(r-state.playerRow), Math.abs(c-state.playerCol));
+  if (distance(monster.row,monster.col) <= 1) return null;
+  const blocked = new Set(state.monsters.filter(m => m !== monster).map(m => coordKey([m.row,m.col])));
+  const start = [monster.row,monster.col];
+  const queue = [{ row: start[0], col: start[1], first: null }];
+  const visited = new Set([coordKey(start)]);
+  let index = 0;
+  while (index < queue.length) {
+    const node = queue[index++];
+    if (distance(node.row,node.col) <= 1) return node.first;
+    const dirs = Object.values(DIRECTIONS);
+    // Rotate order deterministically with the game RNG for fair tie-breaking.
+    const offset = Math.floor(rng() * dirs.length);
+    for (let i = 0; i < dirs.length; i++) {
+      const [dr,dc] = dirs[(i+offset)%dirs.length];
+      const r = node.row + dr, c = node.col + dc;
+      const key = coordKey([r,c]);
+      if (!isWalkable(state.dungeon,r,c) || blocked.has(key) ||
+          (r === state.playerRow && c === state.playerCol) ||
+          visited.has(key)) continue;
+      visited.add(key);
+      queue.push({ row:r, col:c, first:node.first || [r,c] });
+    }
+  }
+  return null;
+}
+
+function moveMonsters(state, rng = defaultRng, alreadyActed = new Set()) {
   for (const monster of state.monsters) {
+    // Attacking and moving are mutually exclusive actions for a monster.
+    if (alreadyActed.has(monster)) continue;
+    if (monster.aggro) {
+      const step = chaseStep(state,monster,rng);
+      if (step) [monster.row,monster.col] = step;
+      continue;
+    }
     const options = Object.values(DIRECTIONS).map(([dr,dc]) => [monster.row+dr,monster.col+dc])
       .filter(([r,c]) => isWalkable(state.dungeon,r,c)
         && !(r === state.playerRow && c === state.playerCol)
-        && !monsterAt(state,r,c)
-        && !keyIsAt(state,r,c)
-        && coordKey([r,c]) !== coordKey(state.dungeon.exitPos));
-    if (options.length) {
-      if (monster.aggro) {
-        // Once attacked, pursue the hero rather than wandering at random.
-        // Choose a legal one-tile step that minimizes distance to the hero.
-        const distance = ([r,c]) => Math.max(Math.abs(r-state.playerRow), Math.abs(c-state.playerCol));
-        const bestDistance = Math.min(...options.map(distance));
-        const best = options.filter((pos) => distance(pos) === bestDistance);
-        [monster.row, monster.col] = choice(best, rng);
-      } else {
-        [monster.row, monster.col] = choice(options, rng);
-      }
-    }
+        && !monsterAt(state,r,c));
+    if (options.length) [monster.row,monster.col] = choice(options,rng);
   }
 }
 
 function resolveProximityDamage(state, damagedThisTurn = new Set()) {
-  // Standing next to a monster hurts the player, never the monster.
-  // Each monster can damage the player only once per turn.
+  // After a player action, adjacent monsters hurt the player, never themselves.
+  // An attacked defender already retaliated, so don't damage twice.
   for (const monster of state.monsters) {
     if (damagedThisTurn.has(monster)) continue;
     if (Math.max(Math.abs(monster.row-state.playerRow), Math.abs(monster.col-state.playerCol)) <= 1) {
@@ -619,7 +649,9 @@ function swapIsBoardLegal(state, fromRow, fromCol, direction) {
   if (!target) return false;
   const [tr, tc] = target;
   if (!inBounds(fromRow, fromCol) || !inBounds(tr, tc)) return false;
-  // Swaps may involve wall tiles, although neither hero nor monsters can enter walls.
+  // Swaps may involve walls, but the entrance has no resource.
+  if (coordKey([fromRow,fromCol]) === coordKey(state.dungeon.entrancePos) ||
+      coordKey([tr,tc]) === coordKey(state.dungeon.entrancePos)) return false;
   if (monsterAt(state, fromRow, fromCol) || monsterAt(state, tr, tc)) return false;
   if (keyIsAt(state, fromRow, fromCol) || keyIsAt(state, tr, tc)) return false;
   if ((fromRow === state.playerRow && fromCol === state.playerCol) ||
@@ -691,7 +723,8 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null } = {
   const layout = dungeonLayout ?? generateDungeon({ rng });
   const state = {
     dungeon: layout,
-    itemGrid: itemGrid ? itemGrid.map((row) => [...row]) : null,
+    itemGrid: itemGrid ? itemGrid.map((row, r) => row.map((item, c) =>
+      r === layout.entrancePos[0] && c === layout.entrancePos[1] ? null : item)) : null,
     playerRow: layout.playerStart[0],
     playerCol: layout.playerStart[1],
     resources: startingResources(),
@@ -816,8 +849,9 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
 
   resolveProximityDamage(state, damagedThisTurn);
   if (!state.gameOver) {
-    moveMonsters(state, rng);
-    resolveProximityDamage(state, damagedThisTurn);
+    moveMonsters(state, rng, damagedThisTurn);
+    // Monster movement is its action this turn. It cannot also attack:
+    // adjacency damage is checked after the PLAYER's next action.
     // A monster can move away and reveal an ordinary three-in-a-row.
     // Resolve it automatically; no player swap is needed.
     if (!state.gameOver) resolveAllMatches(state, rng);
@@ -863,7 +897,7 @@ function statusText() {
   if (game.gameWon) return "ESCAPED! SCORE ×3";
   if (game.gameOverReason === "no_moves") return "NO MOVES!";
   if (game.gameOverReason === "death") return "YOU DIED!";
-  if (game.gameOverReason === "starvation") return "OUT OF FOOD!";
+  if (game.gameOverReason === "starvation") return "OUT OF ENERGY!";
   if (game.lastEvent) return game.lastEvent;
   return game.hasKey ? "Key found — reach the exit >" : "Find the key K, then reach exit >";
 }
@@ -871,7 +905,7 @@ function statusText() {
 function resultsTitle() {
   if (game.gameWon) return "FLOOR COMPLETE";
   if (game.gameOverReason === "death") return "YOU DIED";
-  if (game.gameOverReason === "starvation") return "OUT OF FOOD";
+  if (game.gameOverReason === "starvation") return "OUT OF ENERGY";
   if (game.gameOverReason === "no_moves") return "NO MOVES";
   return "GAME OVER";
 }
@@ -886,7 +920,8 @@ function renderResults() {
     const label = CONFIG.ITEM_LABEL[kind];
     const color = CONFIG.ITEM_COLOR[kind];
     const amount = game.stats.resourcesCollected[kind];
-    return `<div><span style="color:${color};font-weight:700">${label}</span> collected: ${amount}</div>`;
+    const displayName = { food: "Energy", health: "Health", monster: "Summons", gold: "Gold", bombs: "Magic" }[kind];
+    return `<div><span style="color:${color};font-weight:700">${label}</span> ${displayName}: ${amount}</div>`;
   }).join("");
   resultsEl.innerHTML = `
     <div class="results-panel">
@@ -901,8 +936,8 @@ function renderResults() {
 
 function renderHud() {
   statusEl.textContent = statusText();
-  hpEl.innerHTML = `<span class="hp-value">♥ ${game.hp}/9</span><span class="food-value">F ${game.resources.food}</span><span class="key-value">KEY ${game.hasKey ? "✓" : "—"}</span><span class="score-value">SCORE ${game.score}</span>`;
-  resourcesEl.innerHTML = `<span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.gold};font-weight:800">G ${game.resources.gold}</span> <span class="name">Gold</span></span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:800">B ${game.resources.bombs}/${CONFIG.BOMB_RESET_THRESHOLD}</span> <span class="name">Magic</span></span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.monster};font-weight:800">${CONFIG.ITEM_LABEL.monster}</span> <span class="name">Summon</span></span><span class="resource-count"><span class="name">Enemies ${game.monsters.length}</span></span>`;
+  hpEl.innerHTML = `<span class="hp-value">♥ ${game.hp}/9</span><span class="food-value">${CONFIG.ITEM_LABEL.food} ${game.resources.food} <span class="name">Energy</span></span><span class="key-value">KEY ${game.hasKey ? "✓" : "—"}</span><span class="score-value">SCORE ${game.score}</span>`;
+  resourcesEl.innerHTML = `<span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.gold};font-weight:800">G ${game.resources.gold}</span> <span class="name">Gold</span></span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:800">${CONFIG.ITEM_LABEL.bombs} ${game.resources.bombs}/${CONFIG.BOMB_RESET_THRESHOLD}</span> <span class="name">Magic</span></span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.monster};font-weight:800">${CONFIG.ITEM_LABEL.monster}</span> <span class="name">Summon</span></span><span class="resource-count"><span class="name">Enemies ${game.monsters.length}</span></span>`;
 }
 
 function renderBoard() {
@@ -929,6 +964,7 @@ function renderBoard() {
       }
 
       if (row === game.dungeon.entrancePos[0] && col === game.dungeon.entrancePos[1]) {
+        tile.classList.add("entrance-tile");
         const marker = document.createElement("span");
         marker.className = "marker entrance";
         marker.textContent = CONFIG.ENTRANCE_LABEL;
