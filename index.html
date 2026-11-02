@@ -38,6 +38,8 @@ button { font: inherit; }
 #status { font-size: clamp(11px, 3vw, 13px); line-height: 1.2; color: #b7b7c5; }
 .game-title { flex: 1; font-size: 12px; font-weight: 800; letter-spacing: .09em; color: #c6c6d0; }
 .game-status { min-height: 16px; text-align: center; }
+.game-status.danger { color: #ffae90 !important; }
+.game-status.damage { color: #ff6666 !important; font-weight: 800; }
 #new-game {
   border: 1px solid #555b66;
   background: #1b1d24;
@@ -86,6 +88,16 @@ button { font: inherit; }
 .tile.entrance-tile { background: #263943; border: 1px solid #6c97a5; }
 .tile.entrance-tile .marker.entrance { left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: clamp(16px, 5vw, 26px); }
 .tile.entrance-tile.hero .marker.entrance { opacity: .45; }
+.tile.exit-tile { background: #403b29; border: 1px solid #b39a55; }
+.tile.exit-tile .marker.exit { right: 50%; top: 50%; transform: translate(50%, -50%); font-size: clamp(16px, 5vw, 26px); }
+.tile.exit-tile.hero .marker.exit { opacity: .45; }
+.tile.threatened.floor::before, .tile.threatened.entrance-tile::before, .tile.threatened.exit-tile::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  border: 2px solid rgba(242, 85, 85, .52); border-radius: 3px; z-index: 2;
+}
+.tile.threatened.hero::before { border-color: #ff6666; border-width: 3px; }
+.tile.recent-hit .hero-mark { animation: hero-hit .34s ease-out; }
+@keyframes hero-hit { 0%, 55% { background: #ff4040; transform: translate(-50%,-50%) scale(1.45); } 100% { background: rgb(240,230,210); transform: translate(-50%,-50%) scale(1); } }
 .tile .marker.exit { right: 4px; color: rgb(225,205,120); }
 .tile.hero .resource { visibility: hidden; }
 .tile .hero-mark {
@@ -175,7 +187,7 @@ button { font: inherit; }
       <button id="new-game" type="button">New game</button>
     </header>
     <div class="hud stats-hud">
-      <div id="hp">HP 5</div>
+      <div id="hp">HP 9</div>
       <div id="resources"></div>
     </div>
     <div id="status" class="hud game-status">Find the key, then escape.</div>
@@ -186,7 +198,7 @@ button { font: inherit; }
       <div id="results" class="results hidden" role="dialog" aria-modal="true"></div>
     </section>
 
-    <footer class="hud bottom-hud"><div id="version">web reset 1.6 • energy + engaged enemies</div></footer>
+    <footer class="hud bottom-hud"><div id="version">web reset 1.7 • efficient escapes + threat zones</div></footer>
   </main>
 
   <script>
@@ -196,7 +208,7 @@ const CONFIG = {
   ROOM_OPENING_MIN: 1,
   ROOM_OPENING_MAX: 3,
   ITEM_TYPES: ["food", "health", "monster", "gold", "bombs"],
-  ITEM_LABEL: { food: "ϟ", health: "♥", monster: "✥", gold: "G", bombs: "✦" },
+  ITEM_LABEL: { food: "ϟ", health: "♥", monster: "✥", gold: "◉", bombs: "✦" },
   ITEM_COLOR: {
     food: "rgb(220,130,60)",
     health: "rgb(230,90,90)",
@@ -213,11 +225,12 @@ const CONFIG = {
   EXIT_COLOR: "rgb(225,205,120)",
   ENTRANCE_LABEL: "<",
   EXIT_LABEL: ">",
-  STARTING_HP: 5,
+  STARTING_HP: 9,
   STARTING_FOOD: 25,
   STORAGE_CAP: 9,
   MONSTER_START_COUNT: 3,
-  MONSTER_HP: 3,
+  MONSTER_MIN_HP: 1,
+  MONSTER_MAX_HP: 3,
   BOMB_RESET_THRESHOLD: 9, // Magic board refresh threshold, unchanged.
   MIN_SWIPE: 18,
   MAX_CASCADE_WAVES: 250,
@@ -361,8 +374,9 @@ function generateItemGrid({ layout = null, rows = CONFIG.BOARD_ROWS, cols = CONF
   for (let r = 0; r < rows; r++) {
     const row = [];
     for (let c = 0; c < cols; c++) {
-      // Walls are matchable; the entrance itself is a permanent, empty terrain tile.
-      if (layout && r === layout.entrancePos[0] && c === layout.entrancePos[1]) {
+      // Entrance and exit are permanent empty terrain cells; walls remain matchable.
+      if (layout && ((r === layout.entrancePos[0] && c === layout.entrancePos[1]) ||
+                     (r === layout.exitPos[0] && c === layout.exitPos[1]))) {
         row.push(null);
         continue;
       }
@@ -487,7 +501,6 @@ function startingResources() {
 function grantRunReward(state, itemType, runLength) {
   const gained = resourcesForRunLength(itemType, runLength);
   state.stats.resourcesCollected[itemType] += gained;
-  state.score += gained;
   if (itemType === "health") {
     state.hp = Math.min(CONFIG.STORAGE_CAP, state.hp + gained);
     return;
@@ -539,7 +552,9 @@ function spawnMonster(state, rng = defaultRng) {
   }
   if (!candidates.length) return false;
   const [row,col] = choice(candidates, rng);
-  state.monsters.push({ row, col, hp: CONFIG.MONSTER_HP, aggro: false });
+  state.monsters.push({ row, col,
+    hp: randintInclusive(CONFIG.MONSTER_MIN_HP, CONFIG.MONSTER_MAX_HP, rng),
+    aggro: false });
   return true;
 }
 
@@ -592,19 +607,44 @@ function moveMonsters(state, rng = defaultRng, alreadyActed = new Set()) {
 }
 
 function resolveProximityDamage(state, damagedThisTurn = new Set()) {
-  // After a player action, adjacent monsters hurt the player, never themselves.
-  // An attacked defender already retaliated, so don't damage twice.
+  // Only monsters already adjacent BEFORE their movement can attack.
+  // Attacked defenders already retaliated and cannot hit twice this turn.
+  let damage = 0;
   for (const monster of state.monsters) {
     if (damagedThisTurn.has(monster)) continue;
     if (Math.max(Math.abs(monster.row-state.playerRow), Math.abs(monster.col-state.playerCol)) <= 1) {
       damagedThisTurn.add(monster);
       state.hp = Math.max(0, state.hp - 1);
+      damage++;
     }
   }
+  state.lastProximityDamage = damage;
   if (state.hp === 0) {
     state.gameOver = true;
     state.gameOverReason = "death";
   }
+  return damage;
+}
+
+function isThreatened(state, row, col) {
+  return state.monsters.some((monster) =>
+    Math.max(Math.abs(monster.row - row), Math.abs(monster.col - col)) === 1);
+}
+
+function scoreBreakdown(state) {
+  // Progress is capped by the dungeon's finite depth. No points for matches,
+  // monsters spawned/killed, or extra turns. Every additional turn costs points.
+  const progress = Math.max(0, state.maxDepth - state.dungeon.playerStart[0]) * 20;
+  const key = state.hasKey ? 200 : 0;
+  const escape = state.gameWon ? 1000 : 0;
+  const turns = state.stats.turns * 5;
+  return { progress, key, escape, turns,
+    total: Math.max(0, progress + key + escape - turns) };
+}
+
+function updateScore(state) {
+  state.maxDepth = Math.max(state.maxDepth, state.playerRow);
+  state.score = scoreBreakdown(state).total;
 }
 
 function processTriggers(state, rng = defaultRng, { allowReset = true } = {}) {
@@ -649,9 +689,11 @@ function swapIsBoardLegal(state, fromRow, fromCol, direction) {
   if (!target) return false;
   const [tr, tc] = target;
   if (!inBounds(fromRow, fromCol) || !inBounds(tr, tc)) return false;
-  // Swaps may involve walls, but the entrance has no resource.
-  if (coordKey([fromRow,fromCol]) === coordKey(state.dungeon.entrancePos) ||
-      coordKey([tr,tc]) === coordKey(state.dungeon.entrancePos)) return false;
+  // Swaps may involve walls, but entrance and exit have no resources.
+  for (const special of [state.dungeon.entrancePos, state.dungeon.exitPos]) {
+    if (coordKey([fromRow,fromCol]) === coordKey(special) ||
+        coordKey([tr,tc]) === coordKey(special)) return false;
+  }
   if (monsterAt(state, fromRow, fromCol) || monsterAt(state, tr, tc)) return false;
   if (keyIsAt(state, fromRow, fromCol) || keyIsAt(state, tr, tc)) return false;
   if ((fromRow === state.playerRow && fromCol === state.playerCol) ||
@@ -724,12 +766,16 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null } = {
   const state = {
     dungeon: layout,
     itemGrid: itemGrid ? itemGrid.map((row, r) => row.map((item, c) =>
-      r === layout.entrancePos[0] && c === layout.entrancePos[1] ? null : item)) : null,
+      (r === layout.entrancePos[0] && c === layout.entrancePos[1]) ||
+      (r === layout.exitPos[0] && c === layout.exitPos[1]) ? null : item)) : null,
     playerRow: layout.playerStart[0],
     playerCol: layout.playerStart[1],
     resources: startingResources(),
     hp: CONFIG.STARTING_HP,
     score: 0,
+    maxDepth: layout.playerStart[0],
+    lastProximityDamage: 0,
+    lastAttackDamage: 0,
     monsters: [],
     keyPos: null,
     hasKey: false,
@@ -778,6 +824,8 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
   state.lastMoveStarved = false;
   state.lastMoveBlocked = false;
   state.lastEvent = "";
+  state.lastProximityDamage = 0;
+  state.lastAttackDamage = 0;
 
   if (state.gameOver || state.gameWon) return false;
   if (!(direction in DIRECTIONS)) return false;
@@ -808,6 +856,7 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
     defender.hp--;
     defender.aggro = true;
     state.hp = Math.max(0, state.hp - 1);
+    state.lastAttackDamage = 1;
     damagedThisTurn.add(defender); // The attack already dealt its damage to the player.
     if (defender.hp <= 0) {
       state.monsters = state.monsters.filter((m) => m !== defender);
@@ -833,6 +882,7 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
   }
   processTriggers(state, rng);
   consumeFoodAfterMove(state);
+  updateScore(state);
   if (state.gameOver) return true;
   if (state.hp <= 0) {
     state.gameOver = true;
@@ -842,7 +892,7 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
 
   if (state.playerRow === state.dungeon.exitPos[0] && state.playerCol === state.dungeon.exitPos[1] && state.hasKey) {
     state.gameWon = true;
-    state.score *= 3; // Escape bonus applies to the entire match score.
+    updateScore(state);
     state.gameOverReason = "exit";
     return true;
   }
@@ -857,6 +907,7 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
     if (!state.gameOver) resolveAllMatches(state, rng);
   }
   if (!state.gameOver) endIfNoMoves(state);
+  updateScore(state);
   return true;
 }
 
@@ -894,11 +945,18 @@ function resetGame() {
 }
 
 function statusText() {
-  if (game.gameWon) return "ESCAPED! SCORE ×3";
+  if (game.gameWon) return "ESCAPED! +1000 POINTS";
   if (game.gameOverReason === "no_moves") return "NO MOVES!";
   if (game.gameOverReason === "death") return "YOU DIED!";
   if (game.gameOverReason === "starvation") return "OUT OF ENERGY!";
+  const damage = game.lastProximityDamage + game.lastAttackDamage;
+  if (damage > 0) {
+    const source = game.lastProximityDamage > 0 ? "adjacent monster" : "attack";
+    return `${game.lastEvent ? game.lastEvent + " · " : ""}♥ −${damage} (${source})`;
+  }
   if (game.lastEvent) return game.lastEvent;
+  if (isThreatened(game, game.playerRow, game.playerCol))
+    return "⚠ Adjacent monster: lose ♥ on your next turn";
   return game.hasKey ? "Key found — reach the exit >" : "Find the key K, then reach exit >";
 }
 
@@ -926,8 +984,15 @@ function renderResults() {
   resultsEl.innerHTML = `
     <div class="results-panel">
       <h2>${resultsTitle()}</h2>
-      <div class="score">SCORE: ${game.score}${game.gameWon ? `<div class="escape-bonus">Escape bonus ×3 (matches: ${game.score / 3})</div>` : ""}</div>
-      <div class="results-list"><div>Turns: ${game.stats.turns}</div><div>Key: ${game.hasKey ? "Found" : "Missing"}</div><div>Board resets: ${game.stats.boardResets}</div><div>Monsters spawned: ${game.stats.monstersSpawned}</div>${rows}</div>
+      <div class="score">SCORE: ${game.score}</div>
+      <div class="results-list">
+        <div>Progress: +${scoreBreakdown(game).progress}</div>
+        <div>Key: +${scoreBreakdown(game).key}</div>
+        <div>Escape: +${scoreBreakdown(game).escape}</div>
+        <div>Turns (${game.stats.turns}): −${scoreBreakdown(game).turns}</div>
+        <div>Board resets: ${game.stats.boardResets}</div>
+        <div>Monsters spawned: ${game.stats.monstersSpawned}</div>${rows}
+      </div>
       <button id="overlay-new-game" type="button">New game</button>
     </div>`;
   resultsEl.classList.remove("hidden");
@@ -936,6 +1001,9 @@ function renderResults() {
 
 function renderHud() {
   statusEl.textContent = statusText();
+  statusEl.classList.toggle("damage", game.lastProximityDamage + game.lastAttackDamage > 0);
+  statusEl.classList.toggle("danger", !game.gameOver && !game.gameWon &&
+    isThreatened(game, game.playerRow, game.playerCol));
   hpEl.innerHTML = `<span class="hp-value">♥ ${game.hp}/9</span><span class="food-value">${CONFIG.ITEM_LABEL.food} ${game.resources.food} <span class="name">Energy</span></span><span class="key-value">KEY ${game.hasKey ? "✓" : "—"}</span><span class="score-value">SCORE ${game.score}</span>`;
   resourcesEl.innerHTML = `<span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.gold};font-weight:800">G ${game.resources.gold}</span> <span class="name">Gold</span></span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:800">${CONFIG.ITEM_LABEL.bombs} ${game.resources.bombs}/${CONFIG.BOMB_RESET_THRESHOLD}</span> <span class="name">Magic</span></span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.monster};font-weight:800">${CONFIG.ITEM_LABEL.monster}</span> <span class="name">Summon</span></span><span class="resource-count"><span class="name">Enemies ${game.monsters.length}</span></span>`;
 }
@@ -953,6 +1021,10 @@ function renderBoard() {
 
       const isHero = row === heroRow && col === heroCol;
       if (isHero) tile.classList.add("hero");
+      if (isWalkable(game.dungeon, row, col) && isThreatened(game, row, col))
+        tile.classList.add("threatened");
+      if (isHero && game.lastProximityDamage + game.lastAttackDamage > 0)
+        tile.classList.add("recent-hit");
 
       const item = game.itemGrid[row][col];
       if (item !== null) {
@@ -971,6 +1043,7 @@ function renderBoard() {
         tile.appendChild(marker);
       }
       if (row === game.dungeon.exitPos[0] && col === game.dungeon.exitPos[1]) {
+        tile.classList.add("exit-tile");
         const marker = document.createElement("span");
         marker.className = "marker exit";
         marker.textContent = CONFIG.EXIT_LABEL;
