@@ -91,11 +91,18 @@ button { font: inherit; }
 .tile.exit-tile { background: #403b29; border: 1px solid #b39a55; }
 .tile.exit-tile .marker.exit { right: 50%; top: 50%; transform: translate(50%, -50%); font-size: clamp(16px, 5vw, 26px); }
 .tile.exit-tile.hero .marker.exit { opacity: .45; }
-.tile.threatened.floor::before, .tile.threatened.entrance-tile::before, .tile.threatened.exit-tile::before {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  border: 2px solid rgba(242, 85, 85, .52); border-radius: 3px; z-index: 2;
+/* A subtle heat map replaces threat outlines. Each adjacent monster adds
+   another 20%-opacity red layer: 1 = 20%, 2 = 36%, 3 = 48.8%, etc.
+   Tint is painted behind resources, markers, and sprites for readability. */
+.tile.heat.floor {
+  background: linear-gradient(rgba(218, 58, 68, var(--heat-alpha)), rgba(218, 58, 68, var(--heat-alpha))), rgb(82,78,72);
 }
-.tile.threatened.hero::before { border-color: #ff6666; border-width: 3px; }
+.tile.heat.entrance-tile {
+  background: linear-gradient(rgba(218, 58, 68, var(--heat-alpha)), rgba(218, 58, 68, var(--heat-alpha))), #263943;
+}
+.tile.heat.exit-tile {
+  background: linear-gradient(rgba(218, 58, 68, var(--heat-alpha)), rgba(218, 58, 68, var(--heat-alpha))), #403b29;
+}
 .tile.recent-hit .hero-mark { animation: hero-hit .34s ease-out; }
 @keyframes hero-hit { 0%, 55% { background: #ff4040; transform: translate(-50%,-50%) scale(1.45); } 100% { background: rgb(240,230,210); transform: translate(-50%,-50%) scale(1); } }
 .tile .marker.exit { right: 4px; color: rgb(225,205,120); }
@@ -117,11 +124,15 @@ button { font: inherit; }
   align-items: stretch;
   font-size: clamp(12px, 3.5vw, 15px);
 }
-#hp { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
+#hp { display: flex; flex-wrap: wrap; gap: 5px 12px; align-items: baseline; }
 #hp .hp-value { color: #f06a6a; font-weight: 800; }
 #hp .food-value { color: rgb(220,130,60); font-weight: 800; }
 #hp .score-value { color: #f5d36e; font-weight: 800; }
-#hp .key-value { color: #e4d0a0; font-weight: 700; }
+#hp .key-value, #resources .key-value { color: #e4d0a0; font-weight: 700; }
+#hp .turn-value { color: #b7b7c5; font-weight: 700; white-space: nowrap; }
+#hp > span { white-space: nowrap; }
+#hp .name { color: #b7b7c5; font-size: .85em; font-weight: 500; }
+#resources .key-value { white-space: nowrap; }
 .bottom-hud { min-height: 10px; }
 #resources { display: flex; flex-wrap: wrap; gap: 3px 13px; align-items: baseline; }
 .resource-count { white-space: nowrap; }
@@ -198,7 +209,7 @@ button { font: inherit; }
       <div id="results" class="results hidden" role="dialog" aria-modal="true"></div>
     </section>
 
-    <footer class="hud bottom-hud"><div id="version">web reset 1.7 • efficient escapes + threat zones</div></footer>
+    <footer class="hud bottom-hud"><div id="version">web reset 1.9 • HUD polish + turn counter</div></footer>
   </main>
 
   <script>
@@ -231,7 +242,7 @@ const CONFIG = {
   MONSTER_START_COUNT: 3,
   MONSTER_MIN_HP: 1,
   MONSTER_MAX_HP: 3,
-  BOMB_RESET_THRESHOLD: 9, // Magic board refresh threshold, unchanged.
+  BOMB_RESET_THRESHOLD: 9, // Reset resource: automatic board refresh at nine.
   MIN_SWIPE: 18,
   MAX_CASCADE_WAVES: 250,
   MATCH_REWARDS: {
@@ -626,9 +637,20 @@ function resolveProximityDamage(state, damagedThisTurn = new Set()) {
   return damage;
 }
 
+function adjacentMonsterCount(state, row, col) {
+  // The proximity damage rule is eight-way adjacency. This is the damage
+  // expected on entry BEFORE monsters take their next movement action.
+  return state.monsters.filter((monster) =>
+    Math.max(Math.abs(monster.row - row), Math.abs(monster.col - col)) === 1).length;
+}
+
 function isThreatened(state, row, col) {
-  return state.monsters.some((monster) =>
-    Math.max(Math.abs(monster.row - row), Math.abs(monster.col - col)) === 1);
+  return adjacentMonsterCount(state, row, col) > 0;
+}
+
+function dangerOpacity(monsterCount) {
+  // Alpha-compositing independent 20% red layers, not linear addition.
+  return monsterCount > 0 ? 1 - Math.pow(0.8, monsterCount) : 0;
 }
 
 function scoreBreakdown(state) {
@@ -948,7 +970,7 @@ function statusText() {
   if (game.gameWon) return "ESCAPED! +1000 POINTS";
   if (game.gameOverReason === "no_moves") return "NO MOVES!";
   if (game.gameOverReason === "death") return "YOU DIED!";
-  if (game.gameOverReason === "starvation") return "OUT OF ENERGY!";
+  if (game.gameOverReason === "starvation") return "OUT OF MOVES!";
   const damage = game.lastProximityDamage + game.lastAttackDamage;
   if (damage > 0) {
     const source = game.lastProximityDamage > 0 ? "adjacent monster" : "attack";
@@ -956,14 +978,14 @@ function statusText() {
   }
   if (game.lastEvent) return game.lastEvent;
   if (isThreatened(game, game.playerRow, game.playerCol))
-    return "⚠ Adjacent monster: lose ♥ on your next turn";
+    return `⚠ Adjacent enemies: −${adjacentMonsterCount(game, game.playerRow, game.playerCol)} ♥ on next move`;
   return game.hasKey ? "Key found — reach the exit >" : "Find the key K, then reach exit >";
 }
 
 function resultsTitle() {
   if (game.gameWon) return "FLOOR COMPLETE";
   if (game.gameOverReason === "death") return "YOU DIED";
-  if (game.gameOverReason === "starvation") return "OUT OF ENERGY";
+  if (game.gameOverReason === "starvation") return "OUT OF MOVES";
   if (game.gameOverReason === "no_moves") return "NO MOVES";
   return "GAME OVER";
 }
@@ -978,7 +1000,7 @@ function renderResults() {
     const label = CONFIG.ITEM_LABEL[kind];
     const color = CONFIG.ITEM_COLOR[kind];
     const amount = game.stats.resourcesCollected[kind];
-    const displayName = { food: "Energy", health: "Health", monster: "Summons", gold: "Gold", bombs: "Magic" }[kind];
+    const displayName = { food: "Moves", health: "Health", monster: "Summons", gold: "Gold", bombs: "Reset" }[kind];
     return `<div><span style="color:${color};font-weight:700">${label}</span> ${displayName}: ${amount}</div>`;
   }).join("");
   resultsEl.innerHTML = `
@@ -1004,8 +1026,10 @@ function renderHud() {
   statusEl.classList.toggle("damage", game.lastProximityDamage + game.lastAttackDamage > 0);
   statusEl.classList.toggle("danger", !game.gameOver && !game.gameWon &&
     isThreatened(game, game.playerRow, game.playerCol));
-  hpEl.innerHTML = `<span class="hp-value">♥ ${game.hp}/9</span><span class="food-value">${CONFIG.ITEM_LABEL.food} ${game.resources.food} <span class="name">Energy</span></span><span class="key-value">KEY ${game.hasKey ? "✓" : "—"}</span><span class="score-value">SCORE ${game.score}</span>`;
-  resourcesEl.innerHTML = `<span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.gold};font-weight:800">G ${game.resources.gold}</span> <span class="name">Gold</span></span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:800">${CONFIG.ITEM_LABEL.bombs} ${game.resources.bombs}/${CONFIG.BOMB_RESET_THRESHOLD}</span> <span class="name">Magic</span></span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.monster};font-weight:800">${CONFIG.ITEM_LABEL.monster}</span> <span class="name">Summon</span></span><span class="resource-count"><span class="name">Enemies ${game.monsters.length}</span></span>`;
+  // First line: the numbers a player checks most often during a turn.
+  hpEl.innerHTML = `<span class="hp-value">♥ ${game.hp}/9</span><span class="food-value">${CONFIG.ITEM_LABEL.food} ${game.resources.food} <span class="name">Moves</span></span><span class="turn-value">TURN ${game.stats.turns}</span><span class="score-value">SCORE ${game.score}</span>`;
+  // Second line: objectives and other resources. Use the same icons as the board.
+  resourcesEl.innerHTML = `<span class="key-value">KEY ${game.hasKey ? "✓" : "—"}</span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.gold};font-weight:800">${CONFIG.ITEM_LABEL.gold} ${game.resources.gold}</span> <span class="name">Gold</span></span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:800">${CONFIG.ITEM_LABEL.bombs} ${game.resources.bombs}/${CONFIG.BOMB_RESET_THRESHOLD}</span> <span class="name" style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:700">Reset</span></span><span class="resource-count"><span class="name">Enemies ${game.monsters.length}</span></span>`;
 }
 
 function renderBoard() {
@@ -1021,8 +1045,14 @@ function renderBoard() {
 
       const isHero = row === heroRow && col === heroCol;
       if (isHero) tile.classList.add("hero");
-      if (isWalkable(game.dungeon, row, col) && isThreatened(game, row, col))
-        tile.classList.add("threatened");
+      // Only walkable tiles receive heat. Never obscure monsters or walls.
+      // Count actual adjacent enemies so overlapping danger intensifies.
+      const monsterCount = isWalkable(game.dungeon, row, col)
+        ? adjacentMonsterCount(game, row, col) : 0;
+      if (monsterCount > 0 && !monsterAt(game, row, col)) {
+        tile.classList.add("heat");
+        tile.style.setProperty("--heat-alpha", dangerOpacity(monsterCount).toFixed(4));
+      }
       if (isHero && game.lastProximityDamage + game.lastAttackDamage > 0)
         tile.classList.add("recent-hit");
 
