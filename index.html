@@ -80,7 +80,7 @@ button { font: inherit; }
 .tile .resource.falling {
   position: relative;
   z-index: 6;
-  animation: waterfall-drop 620ms cubic-bezier(.20,.67,.27,1) both;
+  animation: waterfall-drop 420ms cubic-bezier(.20,.67,.27,1) both;
 }
 .tile.fall-tile { overflow: visible; z-index: 5; }
 @keyframes waterfall-drop {
@@ -92,14 +92,32 @@ button { font: inherit; }
 @keyframes match-pulse { 0% {transform:scale(1)} 50% {transform:scale(1.22)} 100% {transform:scale(1.05)} }
 #match-fx { position:absolute; inset:0; z-index:12; pointer-events:none; overflow:visible; }
 .reward-pop {
-  position:absolute; font-size:clamp(15px,4.8vw,24px); font-weight:900;
+  position:absolute; font-size:clamp(19px,5.8vw,29px); font-weight:900;
   white-space:nowrap; text-shadow: 0 2px 4px #08080a, 0 0 7px #08080a;
-  animation: reward-float 370ms ease-out both;
+  animation: reward-float 390ms ease-out both;
 }
 @keyframes reward-float {
   from { opacity:0; transform:translate(-50%,-60%) scale(.85); }
   28% { opacity:1; }
   to { opacity:1; transform:translate(-50%,-120%) scale(1); }
+}
+/* The hero responds to the swipe before the waterfall starts. */
+.tile.hero-moving { overflow:visible; z-index:10; }
+.tile.hero-moving .hero-mark {
+  animation: hero-step 170ms ease-out both;
+}
+@keyframes hero-step {
+  from { transform: translate(var(--hero-from-x),var(--hero-from-y)); }
+  to { transform: translate(0,0); }
+}
+/* A monster's number and its red tile slide together to their next square. */
+.tile.monster-moving { overflow:visible; z-index:9; }
+.tile.monster-moving .monster-mark {
+  animation: monster-step 260ms cubic-bezier(.2,.7,.3,1) both;
+}
+@keyframes monster-step {
+  from { transform: translate(var(--monster-from-x),var(--monster-from-y)); }
+  to { transform: translate(0,0); }
 }
 .tile .marker {
   position: absolute;
@@ -238,7 +256,7 @@ button { font: inherit; }
       <div id="results" class="results hidden" role="dialog" aria-modal="true"></div>
     </section>
 
-    <footer class="hud bottom-hud"><div id="version">web reset 2.1 • readable cascades + key-gated lumen</div></footer>
+    <footer class="hud bottom-hud"><div id="version">web reset 2.2 • responsive movement + smoother monsters</div></footer>
   </main>
 
   <script>
@@ -965,6 +983,7 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
   state.lastAttackDamage = 0;
   state.lastFallCells = new Set();
   state.animationEvents = [];
+  state.animationHeroFrom = [state.playerRow, state.playerCol];
 
   if (state.gameOver || state.gameWon) return false;
   if (!(direction in DIRECTIONS)) return false;
@@ -1044,7 +1063,22 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
 
   resolveProximityDamage(state, damagedThisTurn);
   if (!state.gameOver) {
+    const monsterBefore = snapshotBoard(state);
+    const oldPositions = new Map(state.monsters.map(m => [m,[m.row,m.col]]));
     moveMonsters(state, rng, damagedThisTurn);
+    const movements = [];
+    for (const monster of state.monsters) {
+      const from = oldPositions.get(monster);
+      if (from && (from[0] !== monster.row || from[1] !== monster.col)) {
+        movements.push({ from, to: [monster.row,monster.col] });
+      }
+    }
+    if (movements.length) {
+      state.animationEvents.push({
+        type: "monster-movement", before: monsterBefore,
+        after: snapshotBoard(state), movements,
+      });
+    }
     // Monster movement is its action this turn. It cannot also attack:
     // adjacency damage is checked after the PLAYER's next action.
     // A monster can move away and reveal an ordinary three-in-a-row.
@@ -1164,7 +1198,8 @@ function renderHud() {
   resourcesEl.innerHTML = `<span class="key-value">KEY ${game.hasKey ? "✓" : "—"}</span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.gold};font-weight:800">${CONFIG.ITEM_LABEL.gold} ${game.resources.gold}</span> <span class="name">Gold</span></span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:800">${CONFIG.ITEM_LABEL.bombs} ${game.resources.bombs}/${CONFIG.BOMB_RESET_THRESHOLD}</span> <span class="name" style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:700">Reset</span></span><span class="resource-count"><span style="color:#b5f9f7;font-weight:800">◇ ${game.stats.lumenCollected}</span> <span class="name">Lumen</span></span><span class="resource-count"><span class="name">Enemies ${game.monsters.length}</span></span>`;
 }
 
-function renderBoard(view = game, { matched = null, dropDistances = null } = {}) {
+function renderBoard(view = game, { matched = null, dropDistances = null,
+  heroFrom = null, monsterMovements = null } = {}) {
   const heroRow = view.playerRow;
   const heroCol = view.playerCol;
   const matchKeys = matched ? new Set(matched.flatMap(m => m.cells.map(coordKey))) : null;
@@ -1180,7 +1215,14 @@ function renderBoard(view = game, { matched = null, dropDistances = null } = {})
       const isHero = row === heroRow && col === heroCol;
       const cellKey = `${row},${col}`;
       if (matchKeys?.has(cellKey)) tile.classList.add("match-tile");
-      if (isHero) tile.classList.add("hero");
+      if (isHero) {
+        tile.classList.add("hero");
+        if (heroFrom && (heroFrom[0] !== row || heroFrom[1] !== col)) {
+          tile.classList.add("hero-moving");
+          tile.style.setProperty("--hero-from-x", `${(heroFrom[1]-col)*(tileSize+3)}px`);
+          tile.style.setProperty("--hero-from-y", `${(heroFrom[0]-row)*(tileSize+3)}px`);
+        }
+      }
       // Only walkable tiles receive heat. Never obscure monsters or walls.
       // Count actual adjacent enemies so overlapping danger intensifies.
       const monsterCount = isWalkable(view.dungeon, row, col)
@@ -1238,6 +1280,14 @@ function renderBoard(view = game, { matched = null, dropDistances = null } = {})
       const monster = monsterAt(view,row,col);
       if (monster) {
         tile.classList.add("monster-tile");
+        if (monsterMovements) {
+          const movement = monsterMovements.find(m => m.to[0] === row && m.to[1] === col);
+          if (movement) {
+            tile.classList.add("monster-moving");
+            tile.style.setProperty("--monster-from-x", `${(movement.from[1]-col)*(tileSize+3)}px`);
+            tile.style.setProperty("--monster-from-y", `${(movement.from[0]-row)*(tileSize+3)}px`);
+          }
+        }
         if (monster.aggro) tile.classList.add("aggro");
         const mark = document.createElement("span");
         mark.className = "monster-mark";
@@ -1286,20 +1336,38 @@ async function playCascadeAnimation(events) {
   if (!events.length) { render(); return; }
   const token = ++animationToken;
   animating = true;
-  // Game logic is already complete; replay each captured match and fall visually.
-  // Only a dozen waves are animated in a very long chain, to avoid long lockups.
-  const frames = events.slice(0,12);
+  // Game logic is complete, but the replay shows the hero at the destination
+  // from the first frame. Monster movements are replayed in their real order.
+  // Preserve the event order while limiting very long cascade animations.
+  let cascadeCount = 0;
+  const frames = events.filter(event => event.type === "monster-movement" || ++cascadeCount <= 12);
+  const destination = [game.playerRow, game.playerCol];
+  const visualState = (view) => ({
+    ...view, playerRow: destination[0], playerCol: destination[1],
+    hasKey: game.hasKey, lumenPos: game.lumenPos,
+  });
   renderHud();
   resultsEl.classList.add("hidden");
+  let firstFrame = true;
   for (const frame of frames) {
     if (token !== animationToken) return;
-    renderBoard(frame.before, { matched: frame.matches });
+    if (frame.type === "monster-movement") {
+      // The monster only slides after the earlier waterfall has finished.
+      renderBoard(visualState(frame.after), { monsterMovements: frame.movements });
+      await wait(280);
+      continue;
+    }
+    renderBoard(visualState(frame.before), {
+      matched: frame.matches,
+      heroFrom: firstFrame ? game.animationHeroFrom : null,
+    });
+    firstFrame = false;
     showMatchRewards(frame.matches);
-    await wait(390);
+    await wait(390); // Keep reward popups readable, even as gravity speeds up.
     if (token !== animationToken) return;
     matchFxEl.replaceChildren();
-    renderBoard(frame.after, { dropDistances: frame.dropDistances });
-    await wait(680);
+    renderBoard(visualState(frame.after), { dropDistances: frame.dropDistances });
+    await wait(460);
   }
   if (token !== animationToken) return;
   matchFxEl.replaceChildren();
