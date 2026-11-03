@@ -77,8 +77,30 @@ button { font: inherit; }
   pointer-events: none;
 }
 .tile .resource.symbol-star { font-size: clamp(23px, 7.7vw, 38px); }
-.tile .resource.falling { animation: waterfall-pop 190ms ease-out both; }
-@keyframes waterfall-pop { from { transform:translateY(-11px); opacity:.5; } to { transform:translateY(0); opacity:1; } }
+.tile .resource.falling {
+  position: relative;
+  z-index: 6;
+  animation: waterfall-drop 620ms cubic-bezier(.20,.67,.27,1) both;
+}
+.tile.fall-tile { overflow: visible; z-index: 5; }
+@keyframes waterfall-drop {
+  from { transform: translateY(calc(-1 * var(--drop-px))); opacity: .70; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.tile.match-tile { box-shadow: inset 0 0 0 2px rgba(255,255,255,.70); filter: brightness(1.28); }
+.tile.match-tile .resource { animation: match-pulse 340ms ease-out both; }
+@keyframes match-pulse { 0% {transform:scale(1)} 50% {transform:scale(1.22)} 100% {transform:scale(1.05)} }
+#match-fx { position:absolute; inset:0; z-index:12; pointer-events:none; overflow:visible; }
+.reward-pop {
+  position:absolute; font-size:clamp(15px,4.8vw,24px); font-weight:900;
+  white-space:nowrap; text-shadow: 0 2px 4px #08080a, 0 0 7px #08080a;
+  animation: reward-float 370ms ease-out both;
+}
+@keyframes reward-float {
+  from { opacity:0; transform:translate(-50%,-60%) scale(.85); }
+  28% { opacity:1; }
+  to { opacity:1; transform:translate(-50%,-120%) scale(1); }
+}
 .tile .marker {
   position: absolute;
   top: 2px;
@@ -211,11 +233,12 @@ button { font: inherit; }
 
     <section id="board-wrap" aria-label="Dungeon Match-3 board">
       <div id="board"></div>
+      <div id="match-fx" aria-hidden="true"></div>
       <div id="flash" aria-hidden="true"></div>
       <div id="results" class="results hidden" role="dialog" aria-modal="true"></div>
     </section>
 
-    <footer class="hud bottom-hud"><div id="version">web reset 2.0 • four rooms + waterfalls</div></footer>
+    <footer class="hud bottom-hud"><div id="version">web reset 2.1 • readable cascades + key-gated lumen</div></footer>
   </main>
 
   <script>
@@ -474,7 +497,7 @@ function activatedRunsAfterSwap(grid, a, b, blockedCells = []) {
   }
 }
 
-function waterfallRefill(grid, matched, { fixedCells = [], rng = defaultRng } = {}) {
+function waterfallRefill(grid, matched, { fixedCells = [], dropDistances = null, rng = defaultRng } = {}) {
   // Collapse matched resources downward by column, preserving order.
   // Entrance/exit are permanent holes that split a column into segments.
   const fixed = new Set(fixedCells.map(coordKey));
@@ -492,10 +515,15 @@ function waterfallRefill(grid, matched, { fixedCells = [], rng = defaultRng } = 
       let top=bottom;
       while (top>0 && !fixed.has(`${top-1},${c}`)) top--;
       const values=[];
-      for (let r=bottom;r>=top;r--) if (grid[r][c]!=null) values.push(grid[r][c]);
+      for (let r=bottom;r>=top;r--) if (grid[r][c]!=null) values.push({value:grid[r][c],sourceRow:r});
       let index=0;
+      let newIndex=0;
       for (let r=bottom;r>=top;r--) {
-        const value=index<values.length ? values[index++] : choice(CONFIG.ITEM_TYPES,rng);
+        const existing=index<values.length ? values[index++] : null;
+        const value=existing ? existing.value : choice(CONFIG.ITEM_TYPES,rng);
+        // Distance measured in whole board rows, so the UI can show actual gravity.
+        const sourceRow=existing ? existing.sourceRow : top-(++newIndex);
+        if (dropDistances && r>sourceRow) dropDistances[`${r},${c}`]=r-sourceRow;
         if (grid[r][c] !== value) changed.add(`${r},${c}`);
         grid[r][c]=value;
       }
@@ -506,22 +534,25 @@ function waterfallRefill(grid, matched, { fixedCells = [], rng = defaultRng } = 
 }
 
 function resolveCascades(grid, { blockedCells = [], fixedCells = [], rewardCallback = null,
-  afterWave = null, onFall = null, rng = defaultRng } = {}) {
+  afterWave = null, onFall = null, onWave = null, rng = defaultRng } = {}) {
   let waves=0, totalRuns=0, totalReplacements=0;
   while (true) {
     const blocked=typeof blockedCells === "function" ? blockedCells() : blockedCells;
     const runs=findMatchRuns(maskedGrid(grid,blocked));
     if (!runs.length) break;
     if (++waves>CONFIG.MAX_CASCADE_WAVES) throw new Error("Cascade exceeded safety limit");
+    if (onWave) onWave("before", runs, null);
     const matched=new Set();
     for (const run of runs) {
       const [r,c]=run[0];
       if (rewardCallback) rewardCallback(grid[r][c],run.length);
       for (const pos of run) matched.add(coordKey(pos));
     }
-    const changed=waterfallRefill(grid,matched,{fixedCells,rng});
+    const dropDistances = onWave ? {} : null;
+    const changed=waterfallRefill(grid,matched,{fixedCells,dropDistances,rng});
     if (onFall) onFall(changed);
     if (afterWave) afterWave();
+    if (onWave) onWave("after", runs, dropDistances);
     totalRuns+=runs.length;
     totalReplacements+=matched.size;
   }
@@ -768,7 +799,21 @@ function swapIsBoardLegal(state, fromRow, fromCol, direction) {
   return true;
 }
 
+function snapshotBoard(state) {
+  return {
+    dungeon: state.dungeon,
+    itemGrid: state.itemGrid.map(row => [...row]),
+    playerRow: state.playerRow, playerCol: state.playerCol,
+    monsters: state.monsters.map(m => ({...m})),
+    keyPos: [...state.keyPos], hasKey: state.hasKey,
+    lumenPos: state.lumenPos ? [...state.lumenPos] : null,
+    lastProximityDamage: 0, lastAttackDamage: 0,
+    lastFallCells: new Set(),
+  };
+}
+
 function resolveAllMatches(state, rng = defaultRng) {
+  let pendingFrame = null;
   const outcome = resolveCascades(state.itemGrid, {
     blockedCells: () => occupiedCells(state),
     fixedCells: [state.dungeon.entrancePos,state.dungeon.exitPos],
@@ -777,6 +822,23 @@ function resolveAllMatches(state, rng = defaultRng) {
     // Spawn after each wave so new monsters can block matches in the next wave.
     // B resets wait until the cascade is complete, avoiding stale grid references.
     afterWave: () => processTriggers(state, rng, { allowReset: false }),
+    onWave: (phase, runs, dropDistances) => {
+      if (phase === "before") {
+        pendingFrame = {
+          before: snapshotBoard(state),
+          matches: runs.map(run => ({
+            cells: run.map(pos => [...pos]),
+            kind: state.itemGrid[run[0][0]][run[0][1]],
+            gained: resourcesForRunLength(state.itemGrid[run[0][0]][run[0][1]],run.length),
+          })),
+        };
+      } else if (pendingFrame) {
+        pendingFrame.after = snapshotBoard(state);
+        pendingFrame.dropDistances = dropDistances;
+        state.animationEvents.push(pendingFrame);
+        pendingFrame = null;
+      }
+    },
     rng,
   });
   processTriggers(state, rng);
@@ -846,6 +908,7 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null } = {
     visitedRooms: new Set([0]),
     lumenPos: null,
     lastFallCells: new Set(),
+    animationEvents: [],
     lastProximityDamage: 0,
     lastAttackDamage: 0,
     monsters: [],
@@ -880,7 +943,7 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null } = {
   }
   state.keyPos = choice(keyCandidates,rng);
   for (let i = 0; i < CONFIG.MONSTER_START_COUNT; i++) spawnMonster(state,rng);
-  placeLumenstone(state,rng);
+  // The first optional Lumenstone appears only after the key is collected.
   if (itemGrid) {
     // Custom or restored boards may already contain natural three-in-a-row matches.
     resolveAllMatches(state, rng);
@@ -901,6 +964,7 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
   state.lastProximityDamage = 0;
   state.lastAttackDamage = 0;
   state.lastFallCells = new Set();
+  state.animationEvents = [];
 
   if (state.gameOver || state.gameWon) return false;
   if (!(direction in DIRECTIONS)) return false;
@@ -950,7 +1014,8 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
   if (moved) {
     if (keyIsAt(state, state.playerRow, state.playerCol)) {
       state.hasKey = true;
-      state.lastEvent = "KEY FOUND!";
+      placeLumenstone(state,rng);
+      state.lastEvent = "KEY FOUND! LUMENSTONE APPEARED!";
     }
     if (lumenIsAt(state,state.playerRow,state.playerCol)) {
       state.stats.lumenCollected++;
@@ -1014,11 +1079,18 @@ const resourcesEl = document.querySelector("#resources");
 const resultsEl = document.querySelector("#results");
 const newGameBtn = document.querySelector("#new-game");
 const flashEl = document.querySelector("#flash");
+const matchFxEl = document.querySelector("#match-fx");
 
 let game = null;
 let pointerStart = null;
+let animating = false;
+let animationToken = 0;
 
 function resetGame() {
+  // Cancels a cascade replay if New game is pressed during an animation.
+  animationToken++;
+  animating = false;
+  matchFxEl.replaceChildren();
   game = newGame();
   pointerStart = null;
   render();
@@ -1037,7 +1109,7 @@ function statusText() {
   if (game.lastEvent) return game.lastEvent;
   if (isThreatened(game, game.playerRow, game.playerCol))
     return `⚠ Adjacent enemies: −${adjacentMonsterCount(game, game.playerRow, game.playerCol)} ♥ on next move`;
-  return game.hasKey ? "Key found — reach exit > · ◇ optional" : "Find K, escape > · collect ◇ for bonus";
+  return game.hasKey ? "Key found — reach exit > · ◇ optional" : "Find K to reveal the first ◇ Lumenstone";
 }
 
 function resultsTitle() {
@@ -1092,70 +1164,78 @@ function renderHud() {
   resourcesEl.innerHTML = `<span class="key-value">KEY ${game.hasKey ? "✓" : "—"}</span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.gold};font-weight:800">${CONFIG.ITEM_LABEL.gold} ${game.resources.gold}</span> <span class="name">Gold</span></span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:800">${CONFIG.ITEM_LABEL.bombs} ${game.resources.bombs}/${CONFIG.BOMB_RESET_THRESHOLD}</span> <span class="name" style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:700">Reset</span></span><span class="resource-count"><span style="color:#b5f9f7;font-weight:800">◇ ${game.stats.lumenCollected}</span> <span class="name">Lumen</span></span><span class="resource-count"><span class="name">Enemies ${game.monsters.length}</span></span>`;
 }
 
-function renderBoard() {
-  const heroRow = game.playerRow;
-  const heroCol = game.playerCol;
+function renderBoard(view = game, { matched = null, dropDistances = null } = {}) {
+  const heroRow = view.playerRow;
+  const heroCol = view.playerCol;
+  const matchKeys = matched ? new Set(matched.flatMap(m => m.cells.map(coordKey))) : null;
+  const tileSize = (boardEl.clientWidth - (CONFIG.BOARD_COLS-1)*3) / CONFIG.BOARD_COLS;
   const frag = document.createDocumentFragment();
   for (let row = 0; row < CONFIG.BOARD_ROWS; row++) {
     for (let col = 0; col < CONFIG.BOARD_COLS; col++) {
       const tile = document.createElement("div");
-      tile.className = `tile ${game.dungeon.ground[row][col]}`;
+      tile.className = `tile ${view.dungeon.ground[row][col]}`;
       tile.dataset.row = row;
       tile.dataset.col = col;
 
       const isHero = row === heroRow && col === heroCol;
+      const cellKey = `${row},${col}`;
+      if (matchKeys?.has(cellKey)) tile.classList.add("match-tile");
       if (isHero) tile.classList.add("hero");
       // Only walkable tiles receive heat. Never obscure monsters or walls.
       // Count actual adjacent enemies so overlapping danger intensifies.
-      const monsterCount = isWalkable(game.dungeon, row, col)
-        ? adjacentMonsterCount(game, row, col) : 0;
-      if (monsterCount > 0 && !monsterAt(game, row, col)) {
+      const monsterCount = isWalkable(view.dungeon, row, col)
+        ? adjacentMonsterCount(view, row, col) : 0;
+      if (monsterCount > 0 && !monsterAt(view, row, col)) {
         tile.classList.add("heat");
         tile.style.setProperty("--heat-alpha", dangerOpacity(monsterCount).toFixed(4));
       }
-      if (isHero && game.lastProximityDamage + game.lastAttackDamage > 0)
+      if (isHero && view.lastProximityDamage + view.lastAttackDamage > 0)
         tile.classList.add("recent-hit");
 
-      const item = game.itemGrid[row][col];
+      const item = view.itemGrid[row][col];
       if (item !== null) {
         const resource = document.createElement("span");
         resource.className = "resource";
         if (item === "monster" || item === "bombs") resource.classList.add("symbol-star");
-        if (game.lastFallCells.has(`${row},${col}`)) resource.classList.add("falling");
+        if (dropDistances && dropDistances[cellKey] > 0) {
+          tile.classList.add("fall-tile");
+          resource.classList.add("falling");
+          resource.style.setProperty("--drop-px", `${dropDistances[cellKey]*(tileSize+3)}px`);
+        }
         resource.textContent = CONFIG.ITEM_LABEL[item];
         resource.style.color = CONFIG.ITEM_COLOR[item];
         tile.appendChild(resource);
       }
 
-      if (row === game.dungeon.entrancePos[0] && col === game.dungeon.entrancePos[1]) {
+      if (row === view.dungeon.entrancePos[0] && col === view.dungeon.entrancePos[1]) {
         tile.classList.add("entrance-tile");
         const marker = document.createElement("span");
         marker.className = "marker entrance";
         marker.textContent = CONFIG.ENTRANCE_LABEL;
         tile.appendChild(marker);
       }
-      if (row === game.dungeon.exitPos[0] && col === game.dungeon.exitPos[1]) {
+      if (row === view.dungeon.exitPos[0] && col === view.dungeon.exitPos[1]) {
         tile.classList.add("exit-tile");
         const marker = document.createElement("span");
         marker.className = "marker exit";
         marker.textContent = CONFIG.EXIT_LABEL;
         tile.appendChild(marker);
       }
-      if (keyIsAt(game,row,col)) {
+      if (keyIsAt(view,row,col)) {
         tile.classList.add("key-tile");
         const key = document.createElement("span");
         key.className = "key-mark";
         key.textContent = "K";
         tile.appendChild(key);
       }
-      if (lumenIsAt(game,row,col)) {
+      if (lumenIsAt(view,row,col)) {
         tile.classList.add("lumen-tile");
         const stone=document.createElement("span");
         stone.className="lumen-mark";
         stone.textContent="◇";
         tile.appendChild(stone);
       }
-      const monster = monsterAt(game,row,col);
+      const monster = monsterAt(view,row,col);
       if (monster) {
         tile.classList.add("monster-tile");
         if (monster.aggro) tile.classList.add("aggro");
@@ -1182,6 +1262,51 @@ function render() {
   renderResults();
 }
 
+function showMatchRewards(matches) {
+  matchFxEl.replaceChildren();
+  const cells = boardEl.children;
+  for (const match of matches) {
+    const positions = match.cells.map(([r,c]) => cells[r*CONFIG.BOARD_COLS+c]);
+    if (!positions.length) continue;
+    const centerX = positions.reduce((sum,tile) => sum+tile.offsetLeft+tile.offsetWidth/2,0)/positions.length;
+    const centerY = positions.reduce((sum,tile) => sum+tile.offsetTop+tile.offsetHeight/2,0)/positions.length;
+    const pop = document.createElement("span");
+    pop.className = "reward-pop";
+    pop.style.left = `${centerX}px`;
+    pop.style.top = `${centerY}px`;
+    pop.style.color = CONFIG.ITEM_COLOR[match.kind];
+    pop.textContent = `+${match.gained} ${CONFIG.ITEM_LABEL[match.kind]}`;
+    matchFxEl.appendChild(pop);
+  }
+}
+
+const wait = ms => new Promise(resolve => setTimeout(resolve,ms));
+
+async function playCascadeAnimation(events) {
+  if (!events.length) { render(); return; }
+  const token = ++animationToken;
+  animating = true;
+  // Game logic is already complete; replay each captured match and fall visually.
+  // Only a dozen waves are animated in a very long chain, to avoid long lockups.
+  const frames = events.slice(0,12);
+  renderHud();
+  resultsEl.classList.add("hidden");
+  for (const frame of frames) {
+    if (token !== animationToken) return;
+    renderBoard(frame.before, { matched: frame.matches });
+    showMatchRewards(frame.matches);
+    await wait(390);
+    if (token !== animationToken) return;
+    matchFxEl.replaceChildren();
+    renderBoard(frame.after, { dropDistances: frame.dropDistances });
+    await wait(680);
+  }
+  if (token !== animationToken) return;
+  matchFxEl.replaceChildren();
+  animating = false;
+  render();
+}
+
 function flash(kind) {
   flashEl.className = "";
   void flashEl.offsetWidth;
@@ -1195,7 +1320,7 @@ function tileFromEventTarget(target) {
 }
 
 boardEl.addEventListener("pointerdown", (event) => {
-  if (game.gameOver || game.gameWon) return;
+  if (animating || game.gameOver || game.gameWon) return;
   const cell = tileFromEventTarget(event.target);
   if (!cell) return;
   pointerStart = {
@@ -1222,7 +1347,8 @@ boardEl.addEventListener("pointerup", (event) => {
   if (moved && game.lastMoveStarved) flash("starving");
   else if (!moved && game.lastMoveBlocked) flash("blocked");
   else if (!moved) flash("invalid");
-  render();
+  if (moved) void playCascadeAnimation(game.animationEvents);
+  else render();
 });
 
 boardEl.addEventListener("pointercancel", () => { pointerStart = null; });
