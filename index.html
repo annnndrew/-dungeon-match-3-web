@@ -175,6 +175,7 @@ button { font: inherit; }
 #hp .score-value { color: #f5d36e; font-weight: 800; }
 #hp .key-value, #resources .key-value { color: #e4d0a0; font-weight: 700; }
 #hp .turn-value { color: #b7b7c5; font-weight: 700; white-space: nowrap; }
+.cascade-charge { color: #8ed9d0; font-weight: 800; white-space: nowrap; }
 #hp > span { white-space: nowrap; }
 #hp .name { color: #b7b7c5; font-size: .85em; font-weight: 500; }
 #resources .key-value { white-space: nowrap; }
@@ -204,13 +205,14 @@ button { font: inherit; }
 @keyframes flash { from { opacity: 1; } to { opacity: 0; } }
 
 .results {
-  position: absolute;
+  position: fixed;
   inset: 0;
   z-index: 30;
   background: rgba(0,0,0,.72);
   display: grid;
   place-items: center;
   padding: 16px;
+  overflow-y: auto;
 }
 .results.hidden { display: none; }
 .results-panel {
@@ -221,6 +223,8 @@ button { font: inherit; }
   padding: 18px;
   text-align: center;
   box-shadow: 0 16px 40px rgba(0,0,0,.4);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
 }
 .results-panel h2 { margin: 0 0 8px; font-size: 26px; }
 .results-panel .score { font-size: 21px; margin-bottom: 14px; }
@@ -256,7 +260,7 @@ button { font: inherit; }
       <div id="results" class="results hidden" role="dialog" aria-modal="true"></div>
     </section>
 
-    <footer class="hud bottom-hud"><div id="version">web reset 2.2 • responsive movement + smoother monsters</div></footer>
+    <footer class="hud bottom-hud"><div id="version">web reset 2.4 • cascade damage</div></footer>
   </main>
 
   <script>
@@ -289,6 +293,8 @@ const CONFIG = {
   MONSTER_START_COUNT: 3,
   MONSTER_MIN_HP: 1,
   MONSTER_MAX_HP: 3,
+  BASE_ATTACK_DAMAGE: 1,
+  MAX_CASCADE_ATTACK_BONUS: 2, // Up to 3 damage on the next attack.
   LUMEN_SCORE: 60,
   LUMEN_SCORE_CAP: 3,
   BOMB_RESET_THRESHOLD: 9, // Reset resource: automatic board refresh at nine.
@@ -860,6 +866,14 @@ function resolveAllMatches(state, rng = defaultRng) {
     rng,
   });
   processTriggers(state, rng);
+  // Only a second or later waterfall WAVE grants combat power. Parallel
+  // matches in the same wave do not count as consecutive cascades.
+  // Keep the charge until the next attack; cap it to avoid farming damage.
+  const earnedBonus = Math.max(0, outcome.waves - 1);
+  if (earnedBonus > 0) {
+    state.attackBonus = Math.min(CONFIG.MAX_CASCADE_ATTACK_BONUS,
+      state.attackBonus + earnedBonus);
+  }
   return outcome;
 }
 
@@ -929,6 +943,9 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null } = {
     animationEvents: [],
     lastProximityDamage: 0,
     lastAttackDamage: 0,
+    lastAttackDealt: 0,
+    lastAttackBonusUsed: 0,
+    attackBonus: 0,
     monsters: [],
     keyPos: null,
     hasKey: false,
@@ -944,6 +961,10 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null } = {
       turns: 0,
       boardResets: 0,
       monstersSpawned: 0,
+      monstersKilled: 0,
+      damageDealt: 0,
+      cascadeDamageDealt: 0,
+      cascadePoweredAttacks: 0,
       lumenCollected: 0,
       resourcesCollected: Object.fromEntries(CONFIG.ITEM_TYPES.map((item) => [item, 0])),
     },
@@ -981,6 +1002,8 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
   state.lastEvent = "";
   state.lastProximityDamage = 0;
   state.lastAttackDamage = 0;
+  state.lastAttackDealt = 0;
+  state.lastAttackBonusUsed = 0;
   state.lastFallCells = new Set();
   state.animationEvents = [];
   state.animationHeroFrom = [state.playerRow, state.playerCol];
@@ -1011,19 +1034,33 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
   if (defender) {
     // Attacking consumes a turn even when the monster survives and blocks entry.
     state.stats.turns++;
-    defender.hp--;
+    // A cascade charge earned by this swipe can power this attack immediately.
+    // Unused charges persist until the next attack (maximum +2 damage).
+    const bonus = state.attackBonus;
+    const attackPower = CONFIG.BASE_ATTACK_DAMAGE + bonus;
+    const effectiveDamage = Math.min(defender.hp, attackPower);
+    const effectiveCascadeDamage = Math.max(0,
+      effectiveDamage - CONFIG.BASE_ATTACK_DAMAGE);
+    defender.hp -= attackPower;
     defender.aggro = true;
+    state.attackBonus = 0; // Consume charge on attack, not on ordinary movement.
+    state.lastAttackDealt = effectiveDamage;
+    state.lastAttackBonusUsed = bonus;
+    state.stats.damageDealt += effectiveDamage;
+    state.stats.cascadeDamageDealt += effectiveCascadeDamage;
+    if (bonus > 0) state.stats.cascadePoweredAttacks++;
     state.hp = Math.max(0, state.hp - 1);
     state.lastAttackDamage = 1;
     damagedThisTurn.add(defender); // The attack already dealt its damage to the player.
     if (defender.hp <= 0) {
+      state.stats.monstersKilled++;
       state.monsters = state.monsters.filter((m) => m !== defender);
       state.playerRow = destRow;
       state.playerCol = destCol;
       moved = true;
-      state.lastEvent = "MONSTER DEFEATED!";
+      state.lastEvent = `MONSTER DEFEATED! ${effectiveDamage} DAMAGE${bonus ? ` (+${bonus} CASCADE)` : ""}`;
     } else {
-      state.lastEvent = `MONSTER HIT! ${defender.hp} HP LEFT`;
+      state.lastEvent = `HIT ${effectiveDamage}${bonus ? ` (+${bonus} CASCADE)` : ""} · ENEMY ${defender.hp} HP`;
     }
   } else {
     movePlayerOneStep(state, direction);
@@ -1179,7 +1216,11 @@ function renderResults() {
         <div>Health bonus: +${scoreBreakdown(game).survival}</div>
         <div>Turns (${game.stats.turns}): −${scoreBreakdown(game).turns}</div>
         <div>Board resets: ${game.stats.boardResets}</div>
-        <div>Monsters spawned: ${game.stats.monstersSpawned}</div>${rows}
+        <div>Monsters spawned: ${game.stats.monstersSpawned}</div>
+        <div>Monsters killed: ${game.stats.monstersKilled}</div>
+        <div>Total damage dealt: ${game.stats.damageDealt}</div>
+        <div>Cascade bonus damage: ${game.stats.cascadeDamageDealt}</div>
+        <div>Cascade-powered attacks: ${game.stats.cascadePoweredAttacks}</div>${rows}
       </div>
       <button id="overlay-new-game" type="button">New game</button>
     </div>`;
@@ -1195,7 +1236,7 @@ function renderHud() {
   // First line: the numbers a player checks most often during a turn.
   hpEl.innerHTML = `<span class="hp-value">♥ ${game.hp}/9</span><span class="food-value">${CONFIG.ITEM_LABEL.food} ${game.resources.food} <span class="name">Moves</span></span><span class="turn-value">TURN ${game.stats.turns}</span><span class="score-value">SCORE ${game.score}</span>`;
   // Second line: objectives and other resources. Use the same icons as the board.
-  resourcesEl.innerHTML = `<span class="key-value">KEY ${game.hasKey ? "✓" : "—"}</span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.gold};font-weight:800">${CONFIG.ITEM_LABEL.gold} ${game.resources.gold}</span> <span class="name">Gold</span></span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:800">${CONFIG.ITEM_LABEL.bombs} ${game.resources.bombs}/${CONFIG.BOMB_RESET_THRESHOLD}</span> <span class="name" style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:700">Reset</span></span><span class="resource-count"><span style="color:#b5f9f7;font-weight:800">◇ ${game.stats.lumenCollected}</span> <span class="name">Lumen</span></span><span class="resource-count"><span class="name">Enemies ${game.monsters.length}</span></span>`;
+  resourcesEl.innerHTML = `<span class="key-value">KEY ${game.hasKey ? "✓" : "—"}</span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.gold};font-weight:800">${CONFIG.ITEM_LABEL.gold} ${game.resources.gold}</span> <span class="name">Gold</span></span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:800">${CONFIG.ITEM_LABEL.bombs} ${game.resources.bombs}/${CONFIG.BOMB_RESET_THRESHOLD}</span> <span class="name" style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:700">Reset</span></span><span class="resource-count"><span style="color:#b5f9f7;font-weight:800">◇ ${game.stats.lumenCollected}</span> <span class="name">Lumen</span></span><span class="resource-count"><span class="name">Enemies ${game.monsters.length}</span></span>${game.attackBonus ? `<span class="resource-count"><span class="cascade-charge">⚔ +${game.attackBonus} next hit</span></span>` : ""}`;
 }
 
 function renderBoard(view = game, { matched = null, dropDistances = null,
@@ -1336,34 +1377,44 @@ async function playCascadeAnimation(events) {
   if (!events.length) { render(); return; }
   const token = ++animationToken;
   animating = true;
-  // Game logic is complete, but the replay shows the hero at the destination
-  // from the first frame. Monster movements are replayed in their real order.
-  // Preserve the event order while limiting very long cascade animations.
-  let cascadeCount = 0;
-  const frames = events.filter(event => event.type === "monster-movement" || ++cascadeCount <= 12);
+  // Keep game logic sequential and deterministic, but replay hero and existing
+  // monster movements in the SAME first visual beat. The match/waterfall then
+  // plays at its normal pace. This is a presentation-only experiment.
+  const monsterEvent = events.find(event => event.type === "monster-movement");
+  const movements = monsterEvent?.movements || [];
+  const cascadeFrames = events.filter(event => event.type !== "monster-movement").slice(0,12);
   const destination = [game.playerRow, game.playerCol];
+  const movedMonsterPositions = (monsters) => monsters.map(monster => {
+    const movement = movements.find(m => m.from[0] === monster.row && m.from[1] === monster.col);
+    return movement ? { ...monster, row: movement.to[0], col: movement.to[1] } : monster;
+  });
   const visualState = (view) => ({
     ...view, playerRow: destination[0], playerCol: destination[1],
+    monsters: movedMonsterPositions(view.monsters),
     hasKey: game.hasKey, lumenPos: game.lumenPos,
   });
   renderHud();
   resultsEl.classList.add("hidden");
+
+  if (!cascadeFrames.length) {
+    const view = monsterEvent?.before || snapshotBoard(game);
+    renderBoard(visualState(view), {
+      heroFrom: game.animationHeroFrom,
+      monsterMovements: movements,
+    });
+    await wait(280);
+  }
   let firstFrame = true;
-  for (const frame of frames) {
+  for (const frame of cascadeFrames) {
     if (token !== animationToken) return;
-    if (frame.type === "monster-movement") {
-      // The monster only slides after the earlier waterfall has finished.
-      renderBoard(visualState(frame.after), { monsterMovements: frame.movements });
-      await wait(280);
-      continue;
-    }
     renderBoard(visualState(frame.before), {
       matched: frame.matches,
       heroFrom: firstFrame ? game.animationHeroFrom : null,
+      monsterMovements: firstFrame ? movements : null,
     });
     firstFrame = false;
     showMatchRewards(frame.matches);
-    await wait(390); // Keep reward popups readable, even as gravity speeds up.
+    await wait(390); // Popups stay readable while hero and monsters move together.
     if (token !== animationToken) return;
     matchFxEl.replaceChildren();
     renderBoard(visualState(frame.after), { dropDistances: frame.dropDistances });
