@@ -273,7 +273,7 @@ button { font: inherit; }
       <div id="results" class="results hidden" role="dialog" aria-modal="true"></div>
     </section>
 
-    <footer class="hud bottom-hud"><div id="version">web reset 2.5 • turn-only cascade damage</div></footer>
+    <footer class="hud bottom-hud"><div id="version">web reset 3.0 • rescue Santa</div></footer>
   </main>
 
   <script>
@@ -301,7 +301,9 @@ const CONFIG = {
   ENTRANCE_LABEL: "<",
   EXIT_LABEL: ">",
   STARTING_HP: 9,
-  STARTING_FOOD: 25,
+  STARTING_FOOD: 60,
+  STAGE_COUNT: 3,
+  SUMMON_MATCHES_PER_SPAWN: 2,
   STORAGE_CAP: 9,
   MONSTER_START_COUNT: 3,
   MONSTER_MIN_HP: 1,
@@ -608,13 +610,15 @@ function grantRunReward(state, itemType, runLength) {
   }
   if (itemType === "monster") {
     // M is no longer a stored resource: every match immediately creates enemies.
-    // 3 M -> 1, 4 M -> 2, 5+ M -> 5.
-    state.pendingSpawns += gained;
+    // Every two summon units create one enemy; remainder carries between stages.
+    state.summonProgress += gained;
+    state.pendingSpawns += Math.floor(state.summonProgress / CONFIG.SUMMON_MATCHES_PER_SPAWN);
+    state.summonProgress %= CONFIG.SUMMON_MATCHES_PER_SPAWN;
     return;
   }
-  // Starting Food may exceed the collection cap; collecting F must not lower it.
+  // Moves replenish up to the starting reserve; other resources retain their caps.
   state.resources[itemType] = Math.max(state.resources[itemType],
-    Math.min(CONFIG.STORAGE_CAP, state.resources[itemType] + gained));
+    Math.min(itemType === "food" ? CONFIG.STARTING_FOOD : CONFIG.STORAGE_CAP, state.resources[itemType] + gained));
   if (itemType === "bombs" && state.resources.bombs >= CONFIG.BOMB_RESET_THRESHOLD) {
     state.resources.bombs = 0;
     state.pendingResets++;
@@ -645,6 +649,7 @@ function lumenIsAt(state,row,col) {
 }
 
 function placeLumenstone(state,rng=defaultRng) {
+  if (state.stageLumenCollected) { state.lumenPos = null; return false; }
   const spots=[];
   for (let r=0;r<CONFIG.BOARD_ROWS;r++) for (let c=0;c<CONFIG.BOARD_COLS;c++) {
     if (!isWalkable(state.dungeon,r,c) || (r===state.playerRow && c===state.playerCol) ||
@@ -672,7 +677,7 @@ function spawnMonster(state, rng = defaultRng) {
   if (!candidates.length) return false;
   const [row,col] = choice(candidates, rng);
   state.monsters.push({ row, col,
-    hp: randintInclusive(CONFIG.MONSTER_MIN_HP, CONFIG.MONSTER_MAX_HP, rng),
+    hp: randintInclusive(CONFIG.MONSTER_MIN_HP, CONFIG.MONSTER_MAX_HP, rng) + (state.stage - 1),
     aggro: false });
   return true;
 }
@@ -764,10 +769,10 @@ function dangerOpacity(monsterCount) {
 function scoreBreakdown(state) {
   // Finite achievements reward purposeful exploration, not farming matches.
   // The optional lumenstone bonus is capped, so lingering cannot inflate score.
-  const rooms = Math.max(0,state.visitedRooms.size-1)*100;
-  const key = state.hasKey ? 250 : 0;
+  const rooms = (state.roomsExplored + Math.max(0,state.visitedRooms.size-1))*100;
+  const key = (state.keysCollected + (state.hasKey && state.stage < CONFIG.STAGE_COUNT ? 1 : 0))*250;
   const lumen = Math.min(state.stats.lumenCollected,CONFIG.LUMEN_SCORE_CAP)*CONFIG.LUMEN_SCORE;
-  const escape = state.gameWon ? 1200 : 0;
+  const escape = state.stagesCompleted*400 + (state.gameWon ? 1200 : 0);
   const survival = state.gameWon ? state.hp*10 : 0;
   const turns = state.stats.turns*6;
   return { rooms, key, lumen, escape, survival, turns,
@@ -837,6 +842,7 @@ function swapIsBoardLegal(state, fromRow, fromCol, direction) {
 
 function snapshotBoard(state) {
   return {
+    stage: state.stage,
     dungeon: state.dungeon,
     itemGrid: state.itemGrid.map(row => [...row]),
     playerRow: state.playerRow, playerCol: state.playerCol,
@@ -931,9 +937,15 @@ function endIfNoMoves(state) {
   }
 }
 
-function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null } = {}) {
+function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null, stage = 1 } = {}) {
   const layout = dungeonLayout ?? generateDungeon({ rng });
   const state = {
+    stage,
+    stagesCompleted: 0,
+    roomsExplored: 0,
+    keysCollected: 0,
+    stageLumenCollected: false,
+    summonProgress: 0,
     dungeon: layout,
     itemGrid: itemGrid ? itemGrid.map((row, r) => row.map((item, c) =>
       (r === layout.entrancePos[0] && c === layout.entrancePos[1]) ||
@@ -984,6 +996,7 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null } = {
       if (r === state.playerRow && c === state.playerCol) continue;
       if (coordKey([r,c]) === coordKey(layout.exitPos)) continue;
       if (coordKey([r,c]) === coordKey(layout.entrancePos)) continue;
+      if (stage === CONFIG.STAGE_COUNT && roomIndex(layout,r,c) !== 3) continue;
       keyCandidates.push([r,c]);
     }
   }
@@ -1001,6 +1014,21 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null } = {
     if (hasLegalMatchMove(state)) return state;
   }
   throw new Error("Unable to generate a starting board with a legal move");
+}
+
+function advanceStage(state, rng = defaultRng) {
+  if (state.stage >= CONFIG.STAGE_COUNT) return;
+  const next = newGame({rng, stage: state.stage + 1});
+  const persistent = {
+    resources: {...state.resources}, hp: state.hp, stats: state.stats,
+    summonProgress: state.summonProgress,
+    stagesCompleted: state.stagesCompleted + 1,
+    keysCollected: state.keysCollected + 1,
+    roomsExplored: state.roomsExplored + Math.max(0,state.visitedRooms.size-1),
+  };
+  Object.assign(state, next, persistent);
+  state.lastEvent = `STAGE ${state.stage} — ${state.stage === CONFIG.STAGE_COUNT ? "RESCUE SANTA" : "FIND THE KEY"}`;
+  updateScore(state);
 }
 
 function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } = {}) {
@@ -1087,12 +1115,17 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
   if (moved) {
     if (keyIsAt(state, state.playerRow, state.playerCol)) {
       state.hasKey = true;
-      placeLumenstone(state,rng);
-      state.lastEvent = "KEY FOUND! LUMENSTONE APPEARED!";
+      if (state.stage === CONFIG.STAGE_COUNT) {
+        state.gameWon = true;
+        state.gameOverReason = "rescue";
+        state.lastEvent = "SANTA RESCUED!";
+      } else placeLumenstone(state,rng);
+      if (!state.gameWon) state.lastEvent = "KEY FOUND! LUMENSTONE APPEARED!";
     }
     if (lumenIsAt(state,state.playerRow,state.playerCol)) {
       state.stats.lumenCollected++;
-      placeLumenstone(state,rng);
+      state.stageLumenCollected = true;
+      state.lumenPos = null;
       state.lastEvent = `LUMENSTONE +${CONFIG.LUMEN_SCORE} BONUS!`;
     }
     // The tile just vacated by the hero is matchable again.
@@ -1101,17 +1134,18 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
   processTriggers(state, rng);
   consumeFoodAfterMove(state);
   updateScore(state);
-  if (state.gameOver) return true;
+  if (state.gameOver) { state.gameWon = false; return true; }
   if (state.hp <= 0) {
     state.gameOver = true;
     state.gameOverReason = "death";
+    state.gameWon = false;
     return true;
   }
 
+  if (state.gameWon) { updateScore(state); return true; }
+
   if (state.playerRow === state.dungeon.exitPos[0] && state.playerCol === state.dungeon.exitPos[1] && state.hasKey) {
-    state.gameWon = true;
-    updateScore(state);
-    state.gameOverReason = "exit";
+    advanceStage(state, rng);
     return true;
   }
 
@@ -1185,7 +1219,7 @@ function resetGame() {
 }
 
 function statusText() {
-  if (game.gameWon) return "ESCAPED! +1200 POINTS";
+  if (game.gameWon) return "SANTA RESCUED!";
   if (game.gameOverReason === "no_moves") return "NO MOVES!";
   if (game.gameOverReason === "death") return "YOU DIED!";
   if (game.gameOverReason === "starvation") return "OUT OF MOVES!";
@@ -1197,11 +1231,12 @@ function statusText() {
   if (game.lastEvent) return game.lastEvent;
   if (isThreatened(game, game.playerRow, game.playerCol))
     return `⚠ Adjacent enemies: −${adjacentMonsterCount(game, game.playerRow, game.playerCol)} ♥ on next move`;
+  if (game.stage === CONFIG.STAGE_COUNT) return "Find S — rescue Santa!";
   return game.hasKey ? "Key found — reach exit > · ◇ optional" : "Find K to reveal the first ◇ Lumenstone";
 }
 
 function resultsTitle() {
-  if (game.gameWon) return "FLOOR COMPLETE";
+  if (game.gameWon) return "SANTA RESCUED";
   if (game.gameOverReason === "death") return "YOU DIED";
   if (game.gameOverReason === "starvation") return "OUT OF MOVES";
   if (game.gameOverReason === "no_moves") return "NO MOVES";
@@ -1229,7 +1264,7 @@ function renderResults() {
         <div>New rooms: +${scoreBreakdown(game).rooms}</div>
         <div>Key: +${scoreBreakdown(game).key}</div>
         <div>Lumenstones (${game.stats.lumenCollected}): +${scoreBreakdown(game).lumen}</div>
-        <div>Escape: +${scoreBreakdown(game).escape}</div>
+        <div>Stages / rescue: +${scoreBreakdown(game).escape}</div>
         <div>Health bonus: +${scoreBreakdown(game).survival}</div>
         <div>Turns (${game.stats.turns}): −${scoreBreakdown(game).turns}</div>
         <div>Board resets: ${game.stats.boardResets}</div>
@@ -1253,7 +1288,7 @@ function renderHud() {
   // First line: the numbers a player checks most often during a turn.
   hpEl.innerHTML = `<span class="hp-value">♥ ${game.hp}/9</span><span class="food-value">${CONFIG.ITEM_LABEL.food} ${game.resources.food} <span class="name">Moves</span></span><span class="turn-value">TURN ${game.stats.turns}</span><span class="score-value">SCORE ${game.score}</span>`;
   // Second line: objectives and other resources. Use the same icons as the board.
-  resourcesEl.innerHTML = `<span class="key-value">KEY ${game.hasKey ? "✓" : "—"}</span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.gold};font-weight:800">${CONFIG.ITEM_LABEL.gold} ${game.resources.gold}</span> <span class="name">Gold</span></span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:800">${CONFIG.ITEM_LABEL.bombs} ${game.resources.bombs}/${CONFIG.BOMB_RESET_THRESHOLD}</span> <span class="name" style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:700">Reset</span></span><span class="resource-count"><span style="color:#b5f9f7;font-weight:800">◇ ${game.stats.lumenCollected}</span> <span class="name">Lumen</span></span>`;
+  resourcesEl.innerHTML = `<span>STAGE ${game.stage}/3</span><span>ENEMIES ${game.monsters.length}</span><span class="key-value">${game.stage === CONFIG.STAGE_COUNT ? "SANTA" : "KEY"} ${game.hasKey ? "✓" : "—"}</span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.gold};font-weight:800">${CONFIG.ITEM_LABEL.gold} ${game.resources.gold}</span> <span class="name">Gold</span></span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:800">${CONFIG.ITEM_LABEL.bombs} ${game.resources.bombs}/${CONFIG.BOMB_RESET_THRESHOLD}</span> <span class="name" style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:700">Reset</span></span><span class="resource-count"><span style="color:#b5f9f7;font-weight:800">◇ ${game.stats.lumenCollected}</span> <span class="name">Lumen</span></span>`;
 }
 
 function renderBoard(view = game, { matched = null, dropDistances = null,
@@ -1331,7 +1366,7 @@ function renderBoard(view = game, { matched = null, dropDistances = null,
         tile.classList.add("key-tile");
         const key = document.createElement("span");
         key.className = "key-mark";
-        key.textContent = "K";
+        key.textContent = view.stage === CONFIG.STAGE_COUNT ? "S" : "K";
         tile.appendChild(key);
       }
       if (lumenIsAt(view,row,col)) {
