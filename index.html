@@ -197,11 +197,12 @@ button { font: inherit; }
 .resource-count { white-space: nowrap; }
 .resource-count .name { color: #a7a7b3; font-size: .85em; }
 .resource-count .num { color: #b4b4b4; }
-#version { font-size: 10px; color: #666; text-align: right; }
+#version { font-size: 10px; color: #9999a8; text-align: right; }
 .tile .monster-mark, .tile .key-mark, .tile .lumen-mark { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 900; font-size: clamp(20px, 7vw, 33px); z-index: 3; pointer-events: none; }
 .tile .lumen-mark { color: #b5f9f7; font-size: clamp(25px, 8vw, 40px); text-shadow: 0 0 8px #7af5f1, 0 0 3px #fff; background:rgba(15,90,97,.45); border:1px solid rgba(120,230,229,.5); border-radius:3px; }
-.tile .monster-mark { color: #fff0e6; background: #9d4140; border: 2px solid #d26d5e; border-radius: 3px; }
-.tile.aggro .monster-mark { border-color: #ffd07b; box-shadow: inset 0 0 0 1px #ffd07b; }
+.tile .monster-mark { color: #fff0e6; background: #505369; border: 2px solid #8a8da6; border-radius: 3px; }
+.tile .monster-pattern { position:absolute; right:1px; bottom:0; font-size:11px; line-height:12px; color:#fff5df; pointer-events:none; }
+.tile.aggro .monster-mark { background: #a54c29; color: #fff5df; border-color: #ffd07b; box-shadow: inset 0 0 0 1px #ffd07b; }
 .tile .key-mark { color: #17150b; background: #f5d36e; border: 2px solid #f9e8a7; border-radius: 3px; }
 .tile.monster-tile .resource, .tile.key-tile .resource, .tile.lumen-tile .resource { visibility: hidden; }
 
@@ -273,7 +274,7 @@ button { font: inherit; }
       <div id="results" class="results hidden" role="dialog" aria-modal="true"></div>
     </section>
 
-    <footer class="hud bottom-hud"><div id="version">web reset 3.0 • rescue Santa</div></footer>
+    <footer class="hud bottom-hud"><div id="version">web reset 3.2 • diagonal matches • uncapped health</div></footer>
   </main>
 
   <script>
@@ -309,6 +310,9 @@ const CONFIG = {
   MONSTER_MIN_HP: 1,
   MONSTER_MAX_HP: 3,
   BASE_ATTACK_DAMAGE: 2,
+  MONSTER_SIGHT_RADIUS: 3,
+  MONSTER_MEMORY_TURNS: 3,
+  MONSTER_KILL_SCORE: 30,
   LUMEN_SCORE: 60,
   LUMEN_SCORE_CAP: 3,
   BOMB_RESET_THRESHOLD: 9, // Reset resource: automatic board refresh at nine.
@@ -459,6 +463,8 @@ function generateItemGrid({ layout = null, rows = CONFIG.BOARD_ROWS, cols = CONF
       const forbidden = new Set();
       if (c >= 2 && row[c - 1] === row[c - 2]) forbidden.add(row[c - 1]);
       if (r >= 2 && grid[r - 1][c] === grid[r - 2][c]) forbidden.add(grid[r - 1][c]);
+      if (r >= 2 && c >= 2 && grid[r-1][c-1] === grid[r-2][c-2]) forbidden.add(grid[r-1][c-1]);
+      if (r >= 2 && c+2 < cols && grid[r-1][c+1] === grid[r-2][c+2]) forbidden.add(grid[r-1][c+1]);
       const choices = CONFIG.ITEM_TYPES.filter((item) => !forbidden.has(item));
       if (!choices.length) throw new Error("ITEM_TYPES cannot produce a stable starting board");
       row.push(choice(choices, rng));
@@ -475,38 +481,65 @@ function maskedGrid(itemGrid, blockedCells = []) {
   return itemGrid.map((row, r) => row.map((item, c) => blocked.has(`${r},${c}`) ? null : item));
 }
 
+const MATCH_AXES = [
+  { dr:0, dc:1, name:"horizontal" },
+  { dr:1, dc:0, name:"vertical" },
+  { dr:1, dc:1, name:"diagonalDown" },
+  { dr:1, dc:-1, name:"diagonalUp" },
+];
+
 function findMatchRuns(grid) {
   if (!grid.length || !grid[0].length) return [];
-  const rows = grid.length;
-  const cols = grid[0].length;
-  const runs = [];
-
-  for (let r = 0; r < rows; r++) {
-    let start = 0;
-    for (let c = 1; c <= cols; c++) {
-      const same = c < cols && grid[r][start] != null && grid[r][c] === grid[r][start];
-      if (!same) {
-        if (grid[r][start] != null && c - start >= 3) {
-          runs.push(Array.from({ length: c - start }, (_, i) => [r, start + i]));
-        }
-        start = c;
-      }
-    }
-  }
-
-  for (let c = 0; c < cols; c++) {
-    let start = 0;
-    for (let r = 1; r <= rows; r++) {
-      const same = r < rows && grid[start][c] != null && grid[r][c] === grid[start][c];
-      if (!same) {
-        if (grid[start]?.[c] != null && r - start >= 3) {
-          runs.push(Array.from({ length: r - start }, (_, i) => [start + i, c]));
-        }
-        start = r;
-      }
+  const rows=grid.length,cols=grid[0].length,runs=[];
+  const inside=(r,c)=>r>=0 && r<rows && c>=0 && c<cols;
+  for (const {dr,dc} of MATCH_AXES) {
+    for (let r=0;r<rows;r++) for (let c=0;c<cols;c++) {
+      const kind=grid[r][c];
+      if (kind==null) continue;
+      // A run starts only where its predecessor differs (or is off-board).
+      const pr=r-dr,pc=c-dc;
+      if (inside(pr,pc) && grid[pr][pc]===kind) continue;
+      const run=[];
+      for (let nr=r,nc=c;inside(nr,nc) && grid[nr][nc]===kind;nr+=dr,nc+=dc)
+        run.push([nr,nc]);
+      if (run.length>=3) runs.push(run);
     }
   }
   return runs;
+}
+
+function runOrientation(run) {
+  const dr=run[1][0]-run[0][0],dc=run[1][1]-run[0][1];
+  return MATCH_AXES.find(axis=>axis.dr===dr && axis.dc===dc).name;
+}
+
+function matchSummary(state) {
+  const summary={total:0,diagonal:0,clearedTiles:0,waves:state.stats.matchWaves.length,
+    cascadeWaves:0,longestCascade:0,
+    byOrientation:Object.fromEntries(MATCH_AXES.map(a=>[a.name,0])),
+    byResource:Object.fromEntries(CONFIG.ITEM_TYPES.map(kind=>[kind,0])),
+    byLength:{},byStage:{},bySource:{}};
+  for (const wave of state.stats.matchWaves) {
+    summary.clearedTiles+=wave.clearedTiles;
+    if (wave.wave>1) summary.cascadeWaves++;
+    summary.longestCascade=Math.max(summary.longestCascade,wave.wave);
+    for (const run of wave.runs) {
+      summary.total++;
+      summary.byOrientation[run.orientation]++;
+      summary.byResource[run.kind]++;
+      summary.byLength[run.length]=(summary.byLength[run.length]||0)+1;
+      summary.byStage[wave.stage]=(summary.byStage[wave.stage]||0)+1;
+      summary.bySource[wave.source]=(summary.bySource[wave.source]||0)+1;
+      if (run.orientation.startsWith("diagonal")) summary.diagonal++;
+    }
+  }
+  return summary;
+}
+
+function runData(state) {
+  return {version:"3.2-diagonal-test",outcome:state.gameWon ? "rescued" : state.gameOverReason || "in-progress",
+    stage:state.stage,health:state.hp,resources:{...state.resources},score:scoreBreakdown(state),
+    matches:matchSummary(state),stats:state.stats};
 }
 
 function resourcesForRunLength(itemType, length) {
@@ -605,7 +638,8 @@ function grantRunReward(state, itemType, runLength) {
   const gained = resourcesForRunLength(itemType, runLength);
   state.stats.resourcesCollected[itemType] += gained;
   if (itemType === "health") {
-    state.hp = Math.min(CONFIG.STORAGE_CAP, state.hp + gained);
+    state.hp += gained;
+    state.stats.peakHealth=Math.max(state.stats.peakHealth,state.hp);
     return;
   }
   if (itemType === "monster") {
@@ -676,38 +710,117 @@ function spawnMonster(state, rng = defaultRng) {
   }
   if (!candidates.length) return false;
   const [row,col] = choice(candidates, rng);
-  state.monsters.push({ row, col,
+  const monster = { row, col,
     hp: randintInclusive(CONFIG.MONSTER_MIN_HP, CONFIG.MONSTER_MAX_HP, rng) + (state.stage - 1),
-    aggro: false });
+    type: choice(MONSTER_STAGE_POOLS[state.stage] || MONSTER_STAGE_POOLS[1],rng),
+    aggro: false, lastSeen: null, memory: 0, seesPlayer: false };
+  state.monsters.push(monster);
+  if (monsterCanSeePlayer(state,monster)) alertMonster(state,monster);
   return true;
 }
 
-function chaseStep(state, monster, rng = defaultRng) {
-  // Engaged monsters use a shortest path across floor tiles, rather than
-  // random movement or greedy steps that get stuck behind the room divider.
-  // Once in striking range they hold position; movement never deals damage.
-  const distance = (r,c) => Math.max(Math.abs(r-state.playerRow), Math.abs(c-state.playerCol));
-  if (distance(monster.row,monster.col) <= 1) return null;
-  const blocked = new Set(state.monsters.filter(m => m !== monster).map(m => coordKey([m.row,m.col])));
-  const start = [monster.row,monster.col];
-  const queue = [{ row: start[0], col: start[1], first: null }];
-  const visited = new Set([coordKey(start)]);
-  let index = 0;
-  while (index < queue.length) {
-    const node = queue[index++];
-    if (distance(node.row,node.col) <= 1) return node.first;
-    const dirs = Object.values(DIRECTIONS);
-    // Rotate order deterministically with the game RNG for fair tie-breaking.
-    const offset = Math.floor(rng() * dirs.length);
-    for (let i = 0; i < dirs.length; i++) {
-      const [dr,dc] = dirs[(i+offset)%dirs.length];
-      const r = node.row + dr, c = node.col + dc;
-      const key = coordKey([r,c]);
-      if (!isWalkable(state.dungeon,r,c) || blocked.has(key) ||
-          (r === state.playerRow && c === state.playerCol) ||
-          lumenIsAt(state,r,c) || visited.has(key)) continue;
+// Types describe capabilities; AI and rendering consume the same definitions.
+// Add future monsters here, then give them a weight in MONSTER_STAGE_POOLS.
+const MONSTER_TYPES = {
+  basic: { name: "Guard", attack: "cardinal", symbol: "+", damage: 1 },
+  advanced: { name: "Hunter", attack: "eight", symbol: "✳︎", damage: 1 },
+};
+const MONSTER_STAGE_POOLS = {
+  1: ["basic"],
+  2: ["basic", "basic", "advanced"],
+  3: ["basic", "advanced", "advanced"],
+};
+
+function monsterType(monster) {
+  return MONSTER_TYPES[monster.type] || MONSTER_TYPES.basic;
+}
+
+function clearDiagonal(layout, r, c, nr, nc) {
+  return r === nr || c === nc ||
+    (isWalkable(layout,r,nc) && isWalkable(layout,nr,c));
+}
+
+function hasLineOfSight(layout, fromRow, fromCol, toRow, toCol) {
+  // Traverse every grid cell crossed by a center-to-center ray. At exact
+  // corners both side cells must be floor: no peeking between touching walls.
+  if (!isWalkable(layout,fromRow,fromCol) || !isWalkable(layout,toRow,toCol)) return false;
+  const dx = toCol-fromCol, dy = toRow-fromRow;
+  const nx = Math.abs(dx), ny = Math.abs(dy);
+  const sx = Math.sign(dx), sy = Math.sign(dy);
+  let x=fromCol, y=fromRow, ix=0, iy=0;
+  while (ix<nx || iy<ny) {
+    const decision = (1+2*ix)*ny - (1+2*iy)*nx;
+    if (decision === 0) {
+      if (!isWalkable(layout,y,x+sx) || !isWalkable(layout,y+sy,x)) return false;
+      x+=sx; y+=sy; ix++; iy++;
+    } else if (decision < 0) { x+=sx; ix++; }
+    else { y+=sy; iy++; }
+    if (!isWalkable(layout,y,x)) return false;
+  }
+  return true;
+}
+
+function monsterCanSeePlayer(state, monster) {
+  return Math.max(Math.abs(monster.row-state.playerRow),
+    Math.abs(monster.col-state.playerCol)) <= CONFIG.MONSTER_SIGHT_RADIUS &&
+    hasLineOfSight(state.dungeon,monster.row,monster.col,state.playerRow,state.playerCol);
+}
+
+function monsterCanAttack(state, monster, row, col) {
+  const dr=Math.abs(monster.row-row), dc=Math.abs(monster.col-col);
+  if (Math.max(dr,dc)!==1 || !isWalkable(state.dungeon,row,col)) return false;
+  if (dr && dc) {
+    if (monsterType(monster).attack !== "eight") return false;
+    // Only room interiors allow diagonal attacks. Doors, halls and stairs
+    // always restrict monsters to cardinal attacks, even for advanced types.
+    const room=roomIndex(state.dungeon,monster.row,monster.col);
+    if (room<0 || roomIndex(state.dungeon,row,col)!==room) return false;
+  }
+  return hasLineOfSight(state.dungeon,monster.row,monster.col,row,col);
+}
+
+function alertMonster(state, monster) {
+  monster.aggro=true;
+  monster.seesPlayer=monsterCanSeePlayer(state,monster);
+  monster.lastSeen=[state.playerRow,state.playerCol];
+  monster.memory=CONFIG.MONSTER_MEMORY_TURNS;
+}
+
+function updateMonsterAwareness(state) {
+  for (const monster of state.monsters) {
+    monster.seesPlayer=monsterCanSeePlayer(state,monster);
+    if (monster.seesPlayer) alertMonster(state,monster);
+    else if (!(monster.memory>0)) {
+      monster.aggro=false;
+      monster.lastSeen=null;
+    }
+  }
+}
+
+function monsterCanStep(state, monster, r, c, fromRow=monster.row, fromCol=monster.col) {
+  return isWalkable(state.dungeon,r,c) && clearDiagonal(state.dungeon,fromRow,fromCol,r,c) &&
+    !(r===state.playerRow && c===state.playerCol) && !lumenIsAt(state,r,c) &&
+    !state.monsters.some(m=>m!==monster && m.row===r && m.col===c);
+}
+
+function chaseStep(state, monster) {
+  if (!monster.lastSeen) return null;
+  // Visible hero: find a valid attack position for THIS monster's pattern.
+  // Hidden hero: investigate only the last seen tile, never their live position.
+  const reached = (r,c) => monster.seesPlayer
+    ? monsterCanAttack(state,{...monster,row:r,col:c},state.playerRow,state.playerCol)
+    : r===monster.lastSeen[0] && c===monster.lastSeen[1];
+  const queue=[{row:monster.row,col:monster.col,first:null}];
+  const visited=new Set([coordKey([monster.row,monster.col])]);
+  for (let i=0;i<queue.length;i++) {
+    const node=queue[i];
+    if (reached(node.row,node.col)) return node.first;
+    // Fixed order makes pursuit predictable, including equal-distance paths.
+    for (const [dr,dc] of Object.values(DIRECTIONS)) {
+      const r=node.row+dr,c=node.col+dc,key=coordKey([r,c]);
+      if (visited.has(key) || !monsterCanStep(state,monster,r,c,node.row,node.col)) continue;
       visited.add(key);
-      queue.push({ row:r, col:c, first:node.first || [r,c] });
+      queue.push({row:r,col:c,first:node.first || [r,c]});
     }
   }
   return null;
@@ -715,46 +828,45 @@ function chaseStep(state, monster, rng = defaultRng) {
 
 function moveMonsters(state, rng = defaultRng, alreadyActed = new Set()) {
   for (const monster of state.monsters) {
-    // Attacking and moving are mutually exclusive actions for a monster.
-    if (alreadyActed.has(monster)) continue;
-    if (monster.aggro) {
-      const step = chaseStep(state,monster,rng);
-      if (step) [monster.row,monster.col] = step;
-      continue;
+    if (!alreadyActed.has(monster)) {
+      if (monster.aggro) {
+        const step=chaseStep(state,monster);
+        if (step) [monster.row,monster.col]=step;
+      } else {
+        const options=Object.values(DIRECTIONS).map(([dr,dc])=>[monster.row+dr,monster.col+dc])
+          .filter(([r,c])=>monsterCanStep(state,monster,r,c));
+        if (options.length) [monster.row,monster.col]=choice(options,rng);
+      }
     }
-    const options = Object.values(DIRECTIONS).map(([dr,dc]) => [monster.row+dr,monster.col+dc])
-      .filter(([r,c]) => isWalkable(state.dungeon,r,c)
-        && !(r === state.playerRow && c === state.playerCol)
-        && !monsterAt(state,r,c) && !lumenIsAt(state,r,c));
-    if (options.length) [monster.row,monster.col] = choice(options,rng);
+    // A hidden elf gets three investigation actions before pursuit ends.
+    if (monster.aggro && !monster.seesPlayer) {
+      monster.memory=Math.max(0,monster.memory-1);
+      if (!monster.memory) { monster.aggro=false; monster.lastSeen=null; }
+    }
+    // Wandering into sight alerts immediately; moving never also attacks.
+    if (monsterCanSeePlayer(state,monster)) alertMonster(state,monster);
   }
 }
 
 function resolveProximityDamage(state, damagedThisTurn = new Set()) {
-  // Only monsters already adjacent BEFORE their movement can attack.
-  // Attacked defenders already retaliated and cannot hit twice this turn.
-  let damage = 0;
+  let damage=0;
   for (const monster of state.monsters) {
-    if (damagedThisTurn.has(monster)) continue;
-    if (Math.max(Math.abs(monster.row-state.playerRow), Math.abs(monster.col-state.playerCol)) <= 1) {
-      damagedThisTurn.add(monster);
-      state.hp = Math.max(0, state.hp - 1);
-      damage++;
-    }
+    if (damagedThisTurn.has(monster) ||
+        !monsterCanAttack(state,monster,state.playerRow,state.playerCol)) continue;
+    damagedThisTurn.add(monster);
+    const hit=monsterType(monster).damage;
+    state.hp=Math.max(0,state.hp-hit);
+    damage+=hit;
   }
-  state.lastProximityDamage = damage;
-  if (state.hp === 0) {
-    state.gameOver = true;
-    state.gameOverReason = "death";
-  }
+  state.lastProximityDamage=damage;
+  if (!state.hp) { state.gameOver=true; state.gameOverReason="death"; }
   return damage;
 }
 
-function adjacentMonsterCount(state, row, col) {
-  // The proximity damage rule is eight-way adjacency. This is the damage
-  // expected on entry BEFORE monsters take their next movement action.
-  return state.monsters.filter((monster) =>
-    Math.max(Math.abs(monster.row - row), Math.abs(monster.col - col)) === 1).length;
+function adjacentMonsterCount(state,row,col) {
+  // Heatmap and actual damage share the same pattern and wall checks.
+  return state.monsters.reduce((total,m)=>total+
+    (monsterCanAttack(state,m,row,col) ? monsterType(m).damage : 0),0);
 }
 
 function isThreatened(state, row, col) {
@@ -767,16 +879,17 @@ function dangerOpacity(monsterCount) {
 }
 
 function scoreBreakdown(state) {
-  // Finite achievements reward purposeful exploration, not farming matches.
+  // Objective progress and combat earn points; turns still carry a penalty.
   // The optional lumenstone bonus is capped, so lingering cannot inflate score.
   const rooms = (state.roomsExplored + Math.max(0,state.visitedRooms.size-1))*100;
   const key = (state.keysCollected + (state.hasKey && state.stage < CONFIG.STAGE_COUNT ? 1 : 0))*250;
   const lumen = Math.min(state.stats.lumenCollected,CONFIG.LUMEN_SCORE_CAP)*CONFIG.LUMEN_SCORE;
   const escape = state.stagesCompleted*400 + (state.gameWon ? 1200 : 0);
+  const kills = state.stats.monstersKilled*CONFIG.MONSTER_KILL_SCORE;
   const survival = state.gameWon ? state.hp*10 : 0;
   const turns = state.stats.turns*6;
-  return { rooms, key, lumen, escape, survival, turns,
-    total: Math.max(0,rooms+key+lumen+escape+survival-turns) };
+  return { rooms, key, lumen, escape, kills, survival, turns,
+    total: Math.max(0,rooms+key+lumen+escape+kills+survival-turns) };
 }
 
 function updateScore(state) {
@@ -814,7 +927,8 @@ function canPlayerMove(state, direction) {
   if (!delta) return false;
   const r = state.playerRow + delta[0], c = state.playerCol + delta[1];
   // Moving toward an occupied floor tile is an attack, not a blocked move.
-  return isWalkable(state.dungeon, r, c);
+  return isWalkable(state.dungeon, r, c) &&
+    clearDiagonal(state.dungeon,state.playerRow,state.playerCol,r,c);
 }
 
 function swapTarget(fromRow, fromCol, direction) {
@@ -854,8 +968,9 @@ function snapshotBoard(state) {
   };
 }
 
-function resolveAllMatches(state, rng = defaultRng) {
+function resolveAllMatches(state, rng = defaultRng, {source="natural"} = {}) {
   let pendingFrame = null;
+  let waveNumber=0;
   const outcome = resolveCascades(state.itemGrid, {
     blockedCells: () => occupiedCells(state),
     fixedCells: [state.dungeon.entrancePos,state.dungeon.exitPos],
@@ -866,6 +981,15 @@ function resolveAllMatches(state, rng = defaultRng) {
     afterWave: () => processTriggers(state, rng, { allowReset: false }),
     onWave: (phase, runs, dropDistances) => {
       if (phase === "before") {
+        state.stats.matchWaves.push({
+          turn:state.stats.turns+(source === "swap" ? 1 : 0),stage:state.stage,
+          source,wave:++waveNumber,
+          clearedTiles:new Set(runs.flatMap(run=>run.map(coordKey))).size,
+          runs:runs.map(run=>({kind:state.itemGrid[run[0][0]][run[0][1]],
+            length:run.length,orientation:runOrientation(run),
+            reward:resourcesForRunLength(state.itemGrid[run[0][0]][run[0][1]],run.length),
+            cells:run.map(pos=>[...pos])})),
+        });
         pendingFrame = {
           before: snapshotBoard(state),
           matches: runs.map(run => ({
@@ -978,6 +1102,9 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null, stag
     lastEvent: "",
     stats: {
       turns: 0,
+      matchWaves: [],
+      turnLog: [],
+      peakHealth: CONFIG.STARTING_HP,
       boardResets: 0,
       monstersSpawned: 0,
       monstersKilled: 0,
@@ -1005,13 +1132,14 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null, stag
   // The first optional Lumenstone appears only after the key is collected.
   if (itemGrid) {
     // Custom or restored boards may already contain natural three-in-a-row matches.
-    resolveAllMatches(state, rng);
+    resolveAllMatches(state, rng, {source:"initial"});
+    updateMonsterAwareness(state);
     return state;
   }
 
   for (let i = 0; i < 250; i++) {
     state.itemGrid = generateItemGrid({ layout, rng });
-    if (hasLegalMatchMove(state)) return state;
+    if (hasLegalMatchMove(state)) { updateMonsterAwareness(state); return state; }
   }
   throw new Error("Unable to generate a starting board with a legal move");
 }
@@ -1031,7 +1159,20 @@ function advanceStage(state, rng = defaultRng) {
   updateScore(state);
 }
 
-function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } = {}) {
+function tryMatchMove(state, fromRow, fromCol, direction, options = {}) {
+  const before={stage:state.stage,hp:state.hp,resources:{...state.resources},
+    waves:state.stats.matchWaves.length};
+  const success=performMatchMove(state,fromRow,fromCol,direction,options);
+  if (success) state.stats.turnLog.push({turn:state.stats.turns,
+    stage:before.stage,nextStage:state.stage,direction,swapFrom:[fromRow,fromCol],
+    healthBefore:before.hp,healthAfter:state.hp,
+    resourcesBefore:before.resources,resourcesAfter:{...state.resources},
+    waves:state.stats.matchWaves.length-before.waves,
+    enemies:state.monsters.length,score:state.score});
+  return success;
+}
+
+function performMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } = {}) {
   state.lastMoveStarved = false;
   state.lastMoveBlocked = false;
   state.lastEvent = "";
@@ -1058,7 +1199,7 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
   if (!activated.length) return false;
 
   swapCells(state.itemGrid, a, target);
-  const swapCascades = resolveAllMatches(state, rng);
+  const swapCascades = resolveAllMatches(state, rng, {source:"swap"});
   // Damage bonus is generated by THIS swap's consecutive cascade waves only.
   // It is spent on an attack during this turn, or lost on a normal move.
   const turnCascadeBonus = Math.max(0, swapCascades.waves - 1);
@@ -1073,7 +1214,7 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
 
   if (defender) {
     // An attack is animated AFTER the triggering matches and waterfalls.
-    // Only a kill moves the hero into the target tile.
+    // Attacking never changes the hero position, even on a kill.
     const beforeAttack = snapshotBoard(state);
     state.stats.turns++;
     const bonus = turnCascadeBonus; // Uncapped, never carries to a later turn.
@@ -1082,22 +1223,21 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
     const effectiveDamage = Math.min(hpBefore, attackPower);
     const effectiveCascadeDamage = Math.max(0,
       effectiveDamage - Math.min(hpBefore, CONFIG.BASE_ATTACK_DAMAGE));
+    const retaliation = monsterCanAttack(state,defender,state.playerRow,state.playerCol)
+      ? monsterType(defender).damage : 0;
     defender.hp -= attackPower;
-    defender.aggro = true;
+    alertMonster(state,defender);
     state.lastAttackDealt = effectiveDamage;
     state.lastAttackBonusUsed = bonus;
     state.stats.damageDealt += effectiveDamage;
     state.stats.cascadeDamageDealt += effectiveCascadeDamage;
     if (bonus > 0) state.stats.cascadePoweredAttacks++;
-    state.hp = Math.max(0, state.hp - 1);
-    state.lastAttackDamage = 1;
-    damagedThisTurn.add(defender); // Defender retaliated; cannot hit twice.
+    state.hp = Math.max(0, state.hp - retaliation);
+    state.lastAttackDamage = retaliation;
+    if (retaliation) damagedThisTurn.add(defender); // No second attack or move this turn.
     if (defender.hp <= 0) {
       state.stats.monstersKilled++;
       state.monsters = state.monsters.filter((m) => m !== defender);
-      state.playerRow = destRow;
-      state.playerCol = destCol;
-      moved = true;
       state.lastEvent = `MONSTER DEFEATED! ${effectiveDamage} DAMAGE${bonus ? ` (+${bonus} CASCADE)` : ""}`;
     } else {
       state.lastEvent = `HIT ${effectiveDamage}${bonus ? ` (+${bonus} CASCADE)` : ""} · ENEMY ${defender.hp} HP`;
@@ -1116,11 +1256,9 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
     if (keyIsAt(state, state.playerRow, state.playerCol)) {
       state.hasKey = true;
       if (state.stage === CONFIG.STAGE_COUNT) {
-        state.gameWon = true;
-        state.gameOverReason = "rescue";
-        state.lastEvent = "SANTA RESCUED!";
+        state.lastEvent = "SANTA FOUND! REACH THE EXIT!";
       } else placeLumenstone(state,rng);
-      if (!state.gameWon) state.lastEvent = "KEY FOUND! LUMENSTONE APPEARED!";
+      if (state.stage < CONFIG.STAGE_COUNT) state.lastEvent = "KEY FOUND! LUMENSTONE APPEARED!";
     }
     if (lumenIsAt(state,state.playerRow,state.playerCol)) {
       state.stats.lumenCollected++;
@@ -1129,8 +1267,10 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
       state.lastEvent = `LUMENSTONE +${CONFIG.LUMEN_SCORE} BONUS!`;
     }
     // The tile just vacated by the hero is matchable again.
-    resolveAllMatches(state, rng);
+    resolveAllMatches(state, rng, {source:"hero-reveal"});
   }
+  // Killing a monster exposes its resource without moving the hero.
+  if (defender && defender.hp<=0) resolveAllMatches(state,rng,{source:"attack-reveal"});
   processTriggers(state, rng);
   consumeFoodAfterMove(state);
   updateScore(state);
@@ -1142,13 +1282,17 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
     return true;
   }
 
-  if (state.gameWon) { updateScore(state); return true; }
-
   if (state.playerRow === state.dungeon.exitPos[0] && state.playerCol === state.dungeon.exitPos[1] && state.hasKey) {
-    advanceStage(state, rng);
+    if (state.stage === CONFIG.STAGE_COUNT) {
+      state.gameWon=true;
+      state.gameOverReason="rescue";
+      state.lastEvent="SANTA RESCUED!";
+      updateScore(state);
+    } else advanceStage(state, rng);
     return true;
   }
 
+  updateMonsterAwareness(state);
   resolveProximityDamage(state, damagedThisTurn);
   if (!state.gameOver) {
     const monsterBefore = snapshotBoard(state);
@@ -1171,7 +1315,7 @@ function tryMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } =
     // adjacency damage is checked after the PLAYER's next action.
     // A monster can move away and reveal an ordinary three-in-a-row.
     // Resolve it automatically; no player swap is needed.
-    if (!state.gameOver) resolveAllMatches(state, rng);
+    if (!state.gameOver) resolveAllMatches(state, rng, {source:"monster-reveal"});
   }
   if (!state.gameOver) endIfNoMoves(state);
   updateScore(state);
@@ -1231,7 +1375,8 @@ function statusText() {
   if (game.lastEvent) return game.lastEvent;
   if (isThreatened(game, game.playerRow, game.playerCol))
     return `⚠ Adjacent enemies: −${adjacentMonsterCount(game, game.playerRow, game.playerCol)} ♥ on next move`;
-  if (game.stage === CONFIG.STAGE_COUNT) return "Find S — rescue Santa!";
+  if (game.stage === CONFIG.STAGE_COUNT) return game.hasKey
+    ? "Santa is with you — reach exit >!" : "Find S, then bring Santa to exit >!";
   return game.hasKey ? "Key found — reach exit > · ◇ optional" : "Find K to reveal the first ◇ Lumenstone";
 }
 
@@ -1249,6 +1394,7 @@ function renderResults() {
     resultsEl.innerHTML = "";
     return;
   }
+  const matchStats=matchSummary(game);
   const rows = CONFIG.ITEM_TYPES.map((kind) => {
     const label = CONFIG.ITEM_LABEL[kind];
     const color = CONFIG.ITEM_COLOR[kind];
@@ -1267,17 +1413,39 @@ function renderResults() {
         <div>Stages / rescue: +${scoreBreakdown(game).escape}</div>
         <div>Health bonus: +${scoreBreakdown(game).survival}</div>
         <div>Turns (${game.stats.turns}): −${scoreBreakdown(game).turns}</div>
+        <div>Matches: ${matchStats.total} (${matchStats.diagonal} diagonal)</div>
+        <div>Horizontal / vertical: ${matchStats.byOrientation.horizontal} / ${matchStats.byOrientation.vertical}</div>
+        <div>Diagonal ↘ / ↗: ${matchStats.byOrientation.diagonalDown} / ${matchStats.byOrientation.diagonalUp}</div>
+        <div>Match waves: ${matchStats.waves} (${matchStats.cascadeWaves} cascade)</div>
+        <div>Longest cascade: ${matchStats.longestCascade} waves</div>
+        <div>Matched tiles cleared: ${matchStats.clearedTiles}</div>
+        <div>Matches by stage: ${[1,2,3].map(n=>matchStats.byStage[n]||0).join(" / ")}</div>
+        <div>Peak health: ${game.stats.peakHealth}</div>
         <div>Board resets: ${game.stats.boardResets}</div>
         <div>Monsters spawned: ${game.stats.monstersSpawned}</div>
-        <div>Monsters killed: ${game.stats.monstersKilled}</div>
+        <div>Monsters killed: ${game.stats.monstersKilled} (+${scoreBreakdown(game).kills})</div>
         <div>Total damage dealt: ${game.stats.damageDealt}</div>
         <div>Cascade bonus damage: ${game.stats.cascadeDamageDealt}</div>
         <div>Cascade-powered attacks: ${game.stats.cascadePoweredAttacks}</div>${rows}
       </div>
+      <button id="copy-results" type="button">Copy run data</button>
+      <textarea id="run-data" readonly hidden aria-label="Run data to copy" style="width:100%;height:140px"></textarea>
       <button id="overlay-new-game" type="button">New game</button>
     </div>`;
   resultsEl.classList.remove("hidden");
   resultsEl.querySelector("#overlay-new-game").addEventListener("click", resetGame);
+  resultsEl.querySelector("#copy-results").addEventListener("click", async (event)=>{
+    const button=event.currentTarget;
+    const data=JSON.stringify(runData(game),null,2);
+    try {
+      await navigator.clipboard.writeText(data);
+      button.textContent="Copied!";
+    } catch {
+      const field=resultsEl.querySelector("#run-data");
+      field.hidden=false;field.value=data;field.focus();field.select();
+      button.textContent="Select and copy the data below";
+    }
+  });
 }
 
 function renderHud() {
@@ -1286,7 +1454,7 @@ function renderHud() {
   statusEl.classList.toggle("danger", !game.gameOver && !game.gameWon &&
     isThreatened(game, game.playerRow, game.playerCol));
   // First line: the numbers a player checks most often during a turn.
-  hpEl.innerHTML = `<span class="hp-value">♥ ${game.hp}/9</span><span class="food-value">${CONFIG.ITEM_LABEL.food} ${game.resources.food} <span class="name">Moves</span></span><span class="turn-value">TURN ${game.stats.turns}</span><span class="score-value">SCORE ${game.score}</span>`;
+  hpEl.innerHTML = `<span class="hp-value">♥ ${game.hp}</span><span class="food-value">${CONFIG.ITEM_LABEL.food} ${game.resources.food} <span class="name">Moves</span></span><span class="turn-value">TURN ${game.stats.turns}</span><span class="score-value">SCORE ${game.score}</span>`;
   // Second line: objectives and other resources. Use the same icons as the board.
   resourcesEl.innerHTML = `<span>STAGE ${game.stage}/3</span><span>ENEMIES ${game.monsters.length}</span><span class="key-value">${game.stage === CONFIG.STAGE_COUNT ? "SANTA" : "KEY"} ${game.hasKey ? "✓" : "—"}</span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.gold};font-weight:800">${CONFIG.ITEM_LABEL.gold} ${game.resources.gold}</span> <span class="name">Gold</span></span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:800">${CONFIG.ITEM_LABEL.bombs} ${game.resources.bombs}/${CONFIG.BOMB_RESET_THRESHOLD}</span> <span class="name" style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:700">Reset</span></span><span class="resource-count"><span style="color:#b5f9f7;font-weight:800">◇ ${game.stats.lumenCollected}</span> <span class="name">Lumen</span></span>`;
 }
@@ -1394,6 +1562,12 @@ function renderBoard(view = game, { matched = null, dropDistances = null,
         const mark = document.createElement("span");
         mark.className = "monster-mark";
         mark.textContent = String(monster.hp);
+        const definition=monsterType(monster);
+        const pattern=document.createElement("span");
+        pattern.className="monster-pattern";
+        pattern.textContent=definition.symbol;
+        mark.appendChild(pattern);
+        tile.title=`${definition.name}: ${monster.hp} HP; ${definition.attack === "eight" ? "eight-way in rooms" : "cardinal"} attacks; ${monster.aggro ? "pursuing" : "wandering"}`;
         tile.appendChild(mark);
       }
       if (isHero) {
@@ -1471,8 +1645,8 @@ async function playCascadeAnimation(events) {
 
   if (attackEvent) {
     // Crucial: the hero stays at the origin throughout the attack's
-    // waterfall. The attack and any movement into a killed enemy happen
-    // ONLY after all the triggering cascade waves have finished.
+    // waterfall. The attack happens after all triggering cascades;
+    // its lunge returns to the same tile, including when the enemy dies.
     for (const event of events.slice(0, attackIndex)) {
       if (!isActive()) return;
       if (!event.type) await playMatchFrame(event);
@@ -1490,11 +1664,7 @@ async function playCascadeAnimation(events) {
     });
     await wait(230);
     if (!isActive()) return;
-    renderBoard(attackEvent.after, {
-      heroFrom: attackEvent.killed
-        ? [attackEvent.before.playerRow, attackEvent.before.playerCol]
-        : null,
-    });
+    renderBoard(attackEvent.after);
     await wait(240);
     // On an attack turn, monster movement follows the resolved attack
     // rather than appearing to strike before the match animation.
