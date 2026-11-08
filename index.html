@@ -274,7 +274,7 @@ button { font: inherit; }
       <div id="results" class="results hidden" role="dialog" aria-modal="true"></div>
     </section>
 
-    <footer class="hud bottom-hud"><div id="version">web reset 3.2 • diagonal matches • uncapped health</div></footer>
+    <footer class="hud bottom-hud"><div id="version">web reset 3.3 • swap / move 8 ways • match rows / columns</div></footer>
   </main>
 
   <script>
@@ -302,6 +302,7 @@ const CONFIG = {
   ENTRANCE_LABEL: "<",
   EXIT_LABEL: ">",
   STARTING_HP: 9,
+  MAX_HP: 9,
   STARTING_FOOD: 60,
   STAGE_COUNT: 3,
   SUMMON_MATCHES_PER_SPAWN: 2,
@@ -463,8 +464,6 @@ function generateItemGrid({ layout = null, rows = CONFIG.BOARD_ROWS, cols = CONF
       const forbidden = new Set();
       if (c >= 2 && row[c - 1] === row[c - 2]) forbidden.add(row[c - 1]);
       if (r >= 2 && grid[r - 1][c] === grid[r - 2][c]) forbidden.add(grid[r - 1][c]);
-      if (r >= 2 && c >= 2 && grid[r-1][c-1] === grid[r-2][c-2]) forbidden.add(grid[r-1][c-1]);
-      if (r >= 2 && c+2 < cols && grid[r-1][c+1] === grid[r-2][c+2]) forbidden.add(grid[r-1][c+1]);
       const choices = CONFIG.ITEM_TYPES.filter((item) => !forbidden.has(item));
       if (!choices.length) throw new Error("ITEM_TYPES cannot produce a stable starting board");
       row.push(choice(choices, rng));
@@ -484,8 +483,6 @@ function maskedGrid(itemGrid, blockedCells = []) {
 const MATCH_AXES = [
   { dr:0, dc:1, name:"horizontal" },
   { dr:1, dc:0, name:"vertical" },
-  { dr:1, dc:1, name:"diagonalDown" },
-  { dr:1, dc:-1, name:"diagonalUp" },
 ];
 
 function findMatchRuns(grid) {
@@ -537,7 +534,7 @@ function matchSummary(state) {
 }
 
 function runData(state) {
-  return {version:"3.2-diagonal-test",outcome:state.gameWon ? "rescued" : state.gameOverReason || "in-progress",
+  return {version:"3.3",outcome:state.gameWon ? "rescued" : state.gameOverReason || "in-progress",
     stage:state.stage,health:state.hp,resources:{...state.resources},score:scoreBreakdown(state),
     matches:matchSummary(state),stats:state.stats};
 }
@@ -638,7 +635,7 @@ function grantRunReward(state, itemType, runLength) {
   const gained = resourcesForRunLength(itemType, runLength);
   state.stats.resourcesCollected[itemType] += gained;
   if (itemType === "health") {
-    state.hp += gained;
+    state.hp = Math.min(CONFIG.MAX_HP,state.hp + gained);
     state.stats.peakHealth=Math.max(state.stats.peakHealth,state.hp);
     return;
   }
@@ -1214,7 +1211,7 @@ function performMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng
 
   if (defender) {
     // An attack is animated AFTER the triggering matches and waterfalls.
-    // Attacking never changes the hero position, even on a kill.
+    // Only a kill advances the hero into the target after the cascades.
     const beforeAttack = snapshotBoard(state);
     state.stats.turns++;
     const bonus = turnCascadeBonus; // Uncapped, never carries to a later turn.
@@ -1238,6 +1235,9 @@ function performMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng
     if (defender.hp <= 0) {
       state.stats.monstersKilled++;
       state.monsters = state.monsters.filter((m) => m !== defender);
+      state.playerRow = destRow;
+      state.playerCol = destCol;
+      moved = true;
       state.lastEvent = `MONSTER DEFEATED! ${effectiveDamage} DAMAGE${bonus ? ` (+${bonus} CASCADE)` : ""}`;
     } else {
       state.lastEvent = `HIT ${effectiveDamage}${bonus ? ` (+${bonus} CASCADE)` : ""} · ENEMY ${defender.hp} HP`;
@@ -1269,8 +1269,6 @@ function performMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng
     // The tile just vacated by the hero is matchable again.
     resolveAllMatches(state, rng, {source:"hero-reveal"});
   }
-  // Killing a monster exposes its resource without moving the hero.
-  if (defender && defender.hp<=0) resolveAllMatches(state,rng,{source:"attack-reveal"});
   processTriggers(state, rng);
   consumeFoodAfterMove(state);
   updateScore(state);
@@ -1413,9 +1411,8 @@ function renderResults() {
         <div>Stages / rescue: +${scoreBreakdown(game).escape}</div>
         <div>Health bonus: +${scoreBreakdown(game).survival}</div>
         <div>Turns (${game.stats.turns}): −${scoreBreakdown(game).turns}</div>
-        <div>Matches: ${matchStats.total} (${matchStats.diagonal} diagonal)</div>
+        <div>Matches: ${matchStats.total}</div>
         <div>Horizontal / vertical: ${matchStats.byOrientation.horizontal} / ${matchStats.byOrientation.vertical}</div>
-        <div>Diagonal ↘ / ↗: ${matchStats.byOrientation.diagonalDown} / ${matchStats.byOrientation.diagonalUp}</div>
         <div>Match waves: ${matchStats.waves} (${matchStats.cascadeWaves} cascade)</div>
         <div>Longest cascade: ${matchStats.longestCascade} waves</div>
         <div>Matched tiles cleared: ${matchStats.clearedTiles}</div>
@@ -1454,7 +1451,7 @@ function renderHud() {
   statusEl.classList.toggle("danger", !game.gameOver && !game.gameWon &&
     isThreatened(game, game.playerRow, game.playerCol));
   // First line: the numbers a player checks most often during a turn.
-  hpEl.innerHTML = `<span class="hp-value">♥ ${game.hp}</span><span class="food-value">${CONFIG.ITEM_LABEL.food} ${game.resources.food} <span class="name">Moves</span></span><span class="turn-value">TURN ${game.stats.turns}</span><span class="score-value">SCORE ${game.score}</span>`;
+  hpEl.innerHTML = `<span class="hp-value">♥ ${game.hp}/${CONFIG.MAX_HP}</span><span class="food-value">${CONFIG.ITEM_LABEL.food} ${game.resources.food} <span class="name">Moves</span></span><span class="turn-value">TURN ${game.stats.turns}</span><span class="score-value">SCORE ${game.score}</span>`;
   // Second line: objectives and other resources. Use the same icons as the board.
   resourcesEl.innerHTML = `<span>STAGE ${game.stage}/3</span><span>ENEMIES ${game.monsters.length}</span><span class="key-value">${game.stage === CONFIG.STAGE_COUNT ? "SANTA" : "KEY"} ${game.hasKey ? "✓" : "—"}</span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.gold};font-weight:800">${CONFIG.ITEM_LABEL.gold} ${game.resources.gold}</span> <span class="name">Gold</span></span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:800">${CONFIG.ITEM_LABEL.bombs} ${game.resources.bombs}/${CONFIG.BOMB_RESET_THRESHOLD}</span> <span class="name" style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:700">Reset</span></span><span class="resource-count"><span style="color:#b5f9f7;font-weight:800">◇ ${game.stats.lumenCollected}</span> <span class="name">Lumen</span></span>`;
 }
@@ -1645,8 +1642,8 @@ async function playCascadeAnimation(events) {
 
   if (attackEvent) {
     // Crucial: the hero stays at the origin throughout the attack's
-    // waterfall. The attack happens after all triggering cascades;
-    // its lunge returns to the same tile, including when the enemy dies.
+    // waterfall. Resolve the attack after its triggering cascades, then
+    // animate movement into the target only when the enemy was defeated.
     for (const event of events.slice(0, attackIndex)) {
       if (!isActive()) return;
       if (!event.type) await playMatchFrame(event);
@@ -1664,7 +1661,10 @@ async function playCascadeAnimation(events) {
     });
     await wait(230);
     if (!isActive()) return;
-    renderBoard(attackEvent.after);
+    renderBoard(attackEvent.after, {
+      heroFrom: attackEvent.killed
+        ? [attackEvent.before.playerRow,attackEvent.before.playerCol] : null,
+    });
     await wait(240);
     // On an attack turn, monster movement follows the resolved attack
     // rather than appearing to strike before the match animation.
