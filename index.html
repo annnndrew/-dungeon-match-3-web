@@ -274,7 +274,7 @@ button { font: inherit; }
       <div id="results" class="results hidden" role="dialog" aria-modal="true"></div>
     </section>
 
-    <footer class="hud bottom-hud"><div id="version">web reset 3.4 • find the key • alarm • escape</div></footer>
+    <footer class="hud bottom-hud"><div id="version">web reset 3.5 • summary / full data export</div></footer>
   </main>
 
   <script>
@@ -559,9 +559,44 @@ function matchSummary(state) {
 }
 
 function runData(state) {
-  return {version:"3.4",outcome:state.gameWon ? "rescued" : state.gameOverReason || "in-progress",
+  return {version:"3.5",outcome:state.gameWon ? "rescued" : state.gameOverReason || "in-progress",
     stage:state.stage,alarmActive:state.alarmActive,keyDiscovered:state.keyDiscovered,health:state.hp,resources:{...state.resources},score:scoreBreakdown(state),
     matches:matchSummary(state),stats:state.stats};
+}
+
+function runSummary(state) {
+  const data=runData(state);
+  const {matchWaves,turnLog,...totals}=data.stats;
+  const stages=[];
+  for(let stage=1;stage<=state.stage;stage++) {
+    const turns=turnLog.filter(turn=>turn.stage===stage);
+    if(!turns.length)continue;
+    stages.push({stage,turns:turns.length,
+      healthOnEntry:turns[0].healthBefore,healthOnExit:turns.at(-1).healthAfter,
+      maxEnemies:Math.max(CONFIG.MONSTER_START_COUNTS[stage],
+        ...turns.filter(turn=>turn.nextStage===stage).map(turn=>turn.enemies)),
+      objectiveDiscoveredAt:turns.find(turn=>turn.keyDiscovered)?.turn ?? null,
+      alarmAt:totals.alarmTriggers.find(alarm=>alarm.stage===stage)?.turn ?? null});
+  }
+  return {...data,exportType:"summary",stats:{...totals,stages}};
+}
+
+function downloadRunData(state) {
+  const data=JSON.stringify(runData(state),null,2);
+  const blob=new Blob([data],{type:"application/json"});
+  const url=URL.createObjectURL(blob);
+  const link=document.createElement("a");
+  const stamp=new Date().toISOString().replace(/[:.]/g,"-");
+  link.href=url;
+  link.download=`dungeon-match3-v3.5-${state.gameWon ? "rescued" : state.gameOverReason || "run"}-${stamp}.json`;
+  try {
+    document.body.appendChild(link);
+    link.click();
+  } finally {
+    link.remove();
+    // Leave Safari time to consume the Blob before releasing it.
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+  }
 }
 
 function resourcesForRunLength(itemType, length) {
@@ -1465,6 +1500,10 @@ function renderResults() {
     <div class="results-panel">
       <h2>${resultsTitle()}</h2>
       <div class="score">SCORE: ${game.score}</div>
+      <button id="copy-results" type="button">Copy Summary</button>
+      <button id="export-results" type="button" style="margin:6px 0 12px">Export Full Data</button>
+      <div id="export-status" role="status" style="font-size:12px;margin-bottom:8px"></div>
+      <textarea id="run-data" readonly hidden aria-label="Run summary to copy" style="width:100%;height:140px"></textarea>
       <div class="results-list">
         <div>New rooms: +${scoreBreakdown(game).rooms}</div>
         <div>Key: +${scoreBreakdown(game).key}</div>
@@ -1487,15 +1526,13 @@ function renderResults() {
         <div>Cascade bonus damage: ${game.stats.cascadeDamageDealt}</div>
         <div>Cascade-powered attacks: ${game.stats.cascadePoweredAttacks}</div>${rows}
       </div>
-      <button id="copy-results" type="button">Copy run data</button>
-      <textarea id="run-data" readonly hidden aria-label="Run data to copy" style="width:100%;height:140px"></textarea>
       <button id="overlay-new-game" type="button">New game</button>
     </div>`;
   resultsEl.classList.remove("hidden");
   resultsEl.querySelector("#overlay-new-game").addEventListener("click", resetGame);
   resultsEl.querySelector("#copy-results").addEventListener("click", async (event)=>{
     const button=event.currentTarget;
-    const data=JSON.stringify(runData(game),null,2);
+    const data=JSON.stringify(runSummary(game),null,2);
     try {
       await navigator.clipboard.writeText(data);
       button.textContent="Copied!";
@@ -1503,6 +1540,15 @@ function renderResults() {
       const field=resultsEl.querySelector("#run-data");
       field.hidden=false;field.value=data;field.focus();field.select();
       button.textContent="Select and copy the data below";
+    }
+  });
+  resultsEl.querySelector("#export-results").addEventListener("click",()=>{
+    const status=resultsEl.querySelector("#export-status");
+    try {
+      downloadRunData(game);
+      status.textContent="Download requested. Find the JSON file in Safari Downloads or Files.";
+    } catch {
+      status.textContent="Download couldn't start. Try again, or use Copy Summary.";
     }
   });
 }
