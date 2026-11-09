@@ -274,7 +274,7 @@ button { font: inherit; }
       <div id="results" class="results hidden" role="dialog" aria-modal="true"></div>
     </section>
 
-    <footer class="hud bottom-hud"><div id="version">web reset 3.3 • swap / move 8 ways • match rows / columns</div></footer>
+    <footer class="hud bottom-hud"><div id="version">web reset 3.4 • find the key • alarm • escape</div></footer>
   </main>
 
   <script>
@@ -307,12 +307,12 @@ const CONFIG = {
   STAGE_COUNT: 3,
   SUMMON_MATCHES_PER_SPAWN: 2,
   STORAGE_CAP: 9,
-  MONSTER_START_COUNT: 3,
+  MONSTER_START_COUNTS: { 1:3, 2:3, 3:6 },
   MONSTER_MIN_HP: 1,
   MONSTER_MAX_HP: 3,
   BASE_ATTACK_DAMAGE: 2,
   MONSTER_SIGHT_RADIUS: 3,
-  MONSTER_MEMORY_TURNS: 3,
+  MONSTER_MEMORY_TURNS: 1,
   MONSTER_KILL_SCORE: 30,
   LUMEN_SCORE: 60,
   LUMEN_SCORE_CAP: 3,
@@ -402,17 +402,42 @@ function generateDungeon({ rng = defaultRng, openingWidth = null } = {}) {
   openSegment(dividerRow,1,dividerCol-1,true); // left pair
   openSegment(dividerRow,dividerCol+1,cols-2,true); // right pair
 
-  const entrancePos = [0,randintInclusive(rooms[0].left,rooms[0].right,rng)];
-  const exitPos = [rows-1,randintInclusive(rooms[3].left,rooms[3].right,rng)];
-  ground[entrancePos[0]][entrancePos[1]] = CONFIG.DUNGEON_FLOOR;
-  ground[exitPos[0]][exitPos[1]] = CONFIG.DUNGEON_FLOOR;
-  return { ground, rooms, entrancePos, exitPos, playerStart:[...entrancePos],
-    dividerRow, dividerCol, openingCells };
+  // Choose room-connected edge cells, leaving the board corners intact.
+  const doors=[];
+  rooms.forEach((room,index)=>{
+    for(let c=room.left;c<=room.right;c++) {
+      if(room.top===1) doors.push({pos:[0,c],room:index});
+      if(room.bottom===rows-2) doors.push({pos:[rows-1,c],room:index});
+    }
+    for(let r=room.top;r<=room.bottom;r++) {
+      if(room.left===1) doors.push({pos:[r,0],room:index});
+      if(room.right===cols-2) doors.push({pos:[r,cols-1],room:index});
+    }
+  });
+  const entrance=choice(doors,rng);
+  const distant=doors.filter(door=>door.room!==entrance.room &&
+    Math.abs(door.pos[0]-entrance.pos[0])+Math.abs(door.pos[1]-entrance.pos[1])>=Math.floor((rows+cols)/2));
+  const exit=choice(distant,rng);
+  const entrancePos=entrance.pos,exitPos=exit.pos;
+  ground[entrancePos[0]][entrancePos[1]]=CONFIG.DUNGEON_FLOOR;
+  ground[exitPos[0]][exitPos[1]]=CONFIG.DUNGEON_FLOOR;
+  return { ground,rooms,entrancePos,exitPos,entranceRoom:entrance.room,
+    exitRoom:exit.room,playerStart:[...entrancePos],dividerRow,dividerCol,openingCells };
 }
 
 function roomIndex(layout,row,col) {
   return layout.rooms.findIndex(room => row>=room.top && row<=room.bottom &&
     col>=room.left && col<=room.right);
+}
+
+function entranceRoomIndex(layout) {
+  if (Number.isInteger(layout.entranceRoom)) return layout.entranceRoom;
+  const [r,c]=layout.entrancePos;
+  for(const [dr,dc] of [[0,0],[1,0],[-1,0],[0,1],[0,-1]]) {
+    const room=roomIndex(layout,r+dr,c+dc);
+    if(room>=0)return room;
+  }
+  return -1;
 }
 
 function isWalkable(layout, row, col) {
@@ -534,8 +559,8 @@ function matchSummary(state) {
 }
 
 function runData(state) {
-  return {version:"3.3",outcome:state.gameWon ? "rescued" : state.gameOverReason || "in-progress",
-    stage:state.stage,health:state.hp,resources:{...state.resources},score:scoreBreakdown(state),
+  return {version:"3.4",outcome:state.gameWon ? "rescued" : state.gameOverReason || "in-progress",
+    stage:state.stage,alarmActive:state.alarmActive,keyDiscovered:state.keyDiscovered,health:state.hp,resources:{...state.resources},score:scoreBreakdown(state),
     matches:matchSummary(state),stats:state.stats};
 }
 
@@ -658,7 +683,7 @@ function grantRunReward(state, itemType, runLength) {
 
 function occupiedCells(state) {
   const occupied = [[state.playerRow, state.playerCol], ...state.monsters.map((m) => [m.row, m.col])];
-  if (!state.hasKey) occupied.push(state.keyPos);
+  if (!state.hasKey && state.keyDiscovered) occupied.push(state.keyPos);
   if (state.lumenPos) occupied.push(state.lumenPos);
   return occupied;
 }
@@ -673,6 +698,30 @@ function buildMatchBoard(state) {
 
 function keyIsAt(state, row, col) {
   return !state.hasKey && state.keyPos[0] === row && state.keyPos[1] === col;
+}
+
+function keyIsVisible(state,row,col) {
+  return state.keyDiscovered && keyIsAt(state,row,col);
+}
+
+function discoverObjective(state) {
+  if(state.hasKey || state.keyDiscovered || !state.keyPos)return false;
+  const [r,c]=state.keyPos;
+  if(Math.max(Math.abs(state.playerRow-r),Math.abs(state.playerCol-c))<=1 &&
+      hasLineOfSight(state.dungeon,state.playerRow,state.playerCol,r,c)) {
+    state.keyDiscovered=true;
+    state.lastEvent=state.stage===CONFIG.STAGE_COUNT ? "SANTA SPOTTED!" : "KEY SPOTTED!";
+    return true;
+  }
+  return false;
+}
+
+function triggerAlarm(state) {
+  if(state.alarmActive)return;
+  state.alarmActive=true;
+  state.stats.alarmTriggers.push({stage:state.stage,turn:state.stats.turns,
+    objective:state.stage===CONFIG.STAGE_COUNT ? "Santa" : "key"});
+  updateMonsterAwareness(state);
 }
 
 function lumenIsAt(state,row,col) {
@@ -712,7 +761,7 @@ function spawnMonster(state, rng = defaultRng) {
     type: choice(MONSTER_STAGE_POOLS[state.stage] || MONSTER_STAGE_POOLS[1],rng),
     aggro: false, lastSeen: null, memory: 0, seesPlayer: false };
   state.monsters.push(monster);
-  if (monsterCanSeePlayer(state,monster)) alertMonster(state,monster);
+  if (state.alarmActive || monsterCanSeePlayer(state,monster)) alertMonster(state,monster);
   return true;
 }
 
@@ -786,7 +835,7 @@ function alertMonster(state, monster) {
 function updateMonsterAwareness(state) {
   for (const monster of state.monsters) {
     monster.seesPlayer=monsterCanSeePlayer(state,monster);
-    if (monster.seesPlayer) alertMonster(state,monster);
+    if (state.alarmActive || monster.seesPlayer) alertMonster(state,monster);
     else if (!(monster.memory>0)) {
       monster.aggro=false;
       monster.lastSeen=null;
@@ -796,15 +845,15 @@ function updateMonsterAwareness(state) {
 
 function monsterCanStep(state, monster, r, c, fromRow=monster.row, fromCol=monster.col) {
   return isWalkable(state.dungeon,r,c) && clearDiagonal(state.dungeon,fromRow,fromCol,r,c) &&
-    !(r===state.playerRow && c===state.playerCol) && !lumenIsAt(state,r,c) &&
+    !(r===state.playerRow && c===state.playerCol) && !lumenIsAt(state,r,c) && !keyIsAt(state,r,c) &&
     !state.monsters.some(m=>m!==monster && m.row===r && m.col===c);
 }
 
 function chaseStep(state, monster) {
   if (!monster.lastSeen) return null;
   // Visible hero: find a valid attack position for THIS monster's pattern.
-  // Hidden hero: investigate only the last seen tile, never their live position.
-  const reached = (r,c) => monster.seesPlayer
+  // Hidden hero: investigate last seen tile. An active alarm tracks live position.
+  const reached = (r,c) => (state.alarmActive || monster.seesPlayer)
     ? monsterCanAttack(state,{...monster,row:r,col:c},state.playerRow,state.playerCol)
     : r===monster.lastSeen[0] && c===monster.lastSeen[1];
   const queue=[{row:monster.row,col:monster.col,first:null}];
@@ -835,13 +884,13 @@ function moveMonsters(state, rng = defaultRng, alreadyActed = new Set()) {
         if (options.length) [monster.row,monster.col]=choice(options,rng);
       }
     }
-    // A hidden elf gets three investigation actions before pursuit ends.
-    if (monster.aggro && !monster.seesPlayer) {
+    // Outside alarm mode, one investigation step is the entire memory.
+    if (!state.alarmActive && monster.aggro && !monster.seesPlayer) {
       monster.memory=Math.max(0,monster.memory-1);
       if (!monster.memory) { monster.aggro=false; monster.lastSeen=null; }
     }
     // Wandering into sight alerts immediately; moving never also attacks.
-    if (monsterCanSeePlayer(state,monster)) alertMonster(state,monster);
+    if (state.alarmActive || monsterCanSeePlayer(state,monster)) alertMonster(state,monster);
   }
 }
 
@@ -944,7 +993,7 @@ function swapIsBoardLegal(state, fromRow, fromCol, direction) {
         coordKey([tr,tc]) === coordKey(special)) return false;
   }
   if (monsterAt(state, fromRow, fromCol) || monsterAt(state, tr, tc)) return false;
-  if (keyIsAt(state, fromRow, fromCol) || keyIsAt(state, tr, tc) ||
+  if (keyIsVisible(state, fromRow, fromCol) || keyIsVisible(state, tr, tc) ||
       lumenIsAt(state,fromRow,fromCol) || lumenIsAt(state,tr,tc)) return false;
   if ((fromRow === state.playerRow && fromCol === state.playerCol) ||
       (tr === state.playerRow && tc === state.playerCol)) return false;
@@ -959,6 +1008,7 @@ function snapshotBoard(state) {
     playerRow: state.playerRow, playerCol: state.playerCol,
     monsters: state.monsters.map(m => ({...m})),
     keyPos: [...state.keyPos], hasKey: state.hasKey,
+    keyDiscovered:state.keyDiscovered,alarmActive:state.alarmActive,
     lumenPos: state.lumenPos ? [...state.lumenPos] : null,
     lastProximityDamage: 0, lastAttackDamage: 0,
     lastFallCells: new Set(),
@@ -1077,7 +1127,7 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null, stag
     hp: CONFIG.STARTING_HP,
     score: 0,
     maxDepth: layout.playerStart[0],
-    visitedRooms: new Set([0]),
+    visitedRooms: new Set(entranceRoomIndex(layout)>=0 ? [entranceRoomIndex(layout)] : []),
     lumenPos: null,
     lastFallCells: new Set(),
     animationEvents: [],
@@ -1089,6 +1139,8 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null, stag
     monsters: [],
     keyPos: null,
     hasKey: false,
+    keyDiscovered: false,
+    alarmActive: false,
     pendingSpawns: 0,
     pendingResets: 0,
     gameOver: false,
@@ -1102,6 +1154,7 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null, stag
       matchWaves: [],
       turnLog: [],
       peakHealth: CONFIG.STARTING_HP,
+      alarmTriggers: [],
       boardResets: 0,
       monstersSpawned: 0,
       monstersKilled: 0,
@@ -1120,12 +1173,15 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null, stag
       if (r === state.playerRow && c === state.playerCol) continue;
       if (coordKey([r,c]) === coordKey(layout.exitPos)) continue;
       if (coordKey([r,c]) === coordKey(layout.entrancePos)) continue;
-      if (stage === CONFIG.STAGE_COUNT && roomIndex(layout,r,c) !== 3) continue;
+      const room=roomIndex(layout,r,c);
+      if (room<0 || room===entranceRoomIndex(layout)) continue;
       keyCandidates.push([r,c]);
     }
   }
+  if(!keyCandidates.length) throw new Error("Dungeon needs an objective room separate from its entrance");
   state.keyPos = choice(keyCandidates,rng);
-  for (let i = 0; i < CONFIG.MONSTER_START_COUNT; i++) spawnMonster(state,rng);
+  discoverObjective(state);
+  for (let i = 0; i < CONFIG.MONSTER_START_COUNTS[stage]; i++) spawnMonster(state,rng);
   // The first optional Lumenstone appears only after the key is collected.
   if (itemGrid) {
     // Custom or restored boards may already contain natural three-in-a-row matches.
@@ -1161,7 +1217,7 @@ function tryMatchMove(state, fromRow, fromCol, direction, options = {}) {
     waves:state.stats.matchWaves.length};
   const success=performMatchMove(state,fromRow,fromCol,direction,options);
   if (success) state.stats.turnLog.push({turn:state.stats.turns,
-    stage:before.stage,nextStage:state.stage,direction,swapFrom:[fromRow,fromCol],
+    stage:before.stage,nextStage:state.stage,alarmActive:state.alarmActive,keyDiscovered:state.keyDiscovered,direction,swapFrom:[fromRow,fromCol],
     healthBefore:before.hp,healthAfter:state.hp,
     resourcesBefore:before.resources,resourcesAfter:{...state.resources},
     waves:state.stats.matchWaves.length-before.waves,
@@ -1255,10 +1311,12 @@ function performMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng
   if (moved) {
     if (keyIsAt(state, state.playerRow, state.playerCol)) {
       state.hasKey = true;
+      state.keyDiscovered = true;
+      triggerAlarm(state);
       if (state.stage === CONFIG.STAGE_COUNT) {
-        state.lastEvent = "SANTA FOUND! REACH THE EXIT!";
+        state.lastEvent = "SANTA FOUND! ALARM — REACH THE EXIT!";
       } else placeLumenstone(state,rng);
-      if (state.stage < CONFIG.STAGE_COUNT) state.lastEvent = "KEY FOUND! LUMENSTONE APPEARED!";
+      if (state.stage < CONFIG.STAGE_COUNT) state.lastEvent = "KEY FOUND! ALARM — ALL MONSTERS HUNTING!";
     }
     if (lumenIsAt(state,state.playerRow,state.playerCol)) {
       state.stats.lumenCollected++;
@@ -1269,6 +1327,7 @@ function performMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng
     // The tile just vacated by the hero is matchable again.
     resolveAllMatches(state, rng, {source:"hero-reveal"});
   }
+  discoverObjective(state);
   processTriggers(state, rng);
   consumeFoodAfterMove(state);
   updateScore(state);
@@ -1373,9 +1432,11 @@ function statusText() {
   if (game.lastEvent) return game.lastEvent;
   if (isThreatened(game, game.playerRow, game.playerCol))
     return `⚠ Adjacent enemies: −${adjacentMonsterCount(game, game.playerRow, game.playerCol)} ♥ on next move`;
-  if (game.stage === CONFIG.STAGE_COUNT) return game.hasKey
-    ? "Santa is with you — reach exit >!" : "Find S, then bring Santa to exit >!";
-  return game.hasKey ? "Key found — reach exit > · ◇ optional" : "Find K to reveal the first ◇ Lumenstone";
+  if (game.alarmActive) return game.stage===CONFIG.STAGE_COUNT
+    ? "ALARM — Santa is with you — reach exit >!" : "ALARM — all monsters hunting — reach exit >!";
+  const objective=game.stage===CONFIG.STAGE_COUNT ? "Santa" : "the key";
+  return game.keyDiscovered ? `${objective} spotted — collect ${game.stage===CONFIG.STAGE_COUNT ? "S" : "K"}!`
+    : `Search the rooms for ${objective} — revealed from one tile away`;
 }
 
 function resultsTitle() {
@@ -1418,6 +1479,7 @@ function renderResults() {
         <div>Matched tiles cleared: ${matchStats.clearedTiles}</div>
         <div>Matches by stage: ${[1,2,3].map(n=>matchStats.byStage[n]||0).join(" / ")}</div>
         <div>Peak health: ${game.stats.peakHealth}</div>
+        <div>Alarms triggered: ${game.stats.alarmTriggers.length}</div>
         <div>Board resets: ${game.stats.boardResets}</div>
         <div>Monsters spawned: ${game.stats.monstersSpawned}</div>
         <div>Monsters killed: ${game.stats.monstersKilled} (+${scoreBreakdown(game).kills})</div>
@@ -1453,7 +1515,7 @@ function renderHud() {
   // First line: the numbers a player checks most often during a turn.
   hpEl.innerHTML = `<span class="hp-value">♥ ${game.hp}/${CONFIG.MAX_HP}</span><span class="food-value">${CONFIG.ITEM_LABEL.food} ${game.resources.food} <span class="name">Moves</span></span><span class="turn-value">TURN ${game.stats.turns}</span><span class="score-value">SCORE ${game.score}</span>`;
   // Second line: objectives and other resources. Use the same icons as the board.
-  resourcesEl.innerHTML = `<span>STAGE ${game.stage}/3</span><span>ENEMIES ${game.monsters.length}</span><span class="key-value">${game.stage === CONFIG.STAGE_COUNT ? "SANTA" : "KEY"} ${game.hasKey ? "✓" : "—"}</span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.gold};font-weight:800">${CONFIG.ITEM_LABEL.gold} ${game.resources.gold}</span> <span class="name">Gold</span></span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:800">${CONFIG.ITEM_LABEL.bombs} ${game.resources.bombs}/${CONFIG.BOMB_RESET_THRESHOLD}</span> <span class="name" style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:700">Reset</span></span><span class="resource-count"><span style="color:#b5f9f7;font-weight:800">◇ ${game.stats.lumenCollected}</span> <span class="name">Lumen</span></span>`;
+  resourcesEl.innerHTML = `<span>STAGE ${game.stage}/3</span><span>ENEMIES ${game.monsters.length}</span><span class="key-value">${game.stage === CONFIG.STAGE_COUNT ? "SANTA" : "KEY"} ${game.hasKey ? "✓" : game.keyDiscovered ? "!" : "?"}</span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.gold};font-weight:800">${CONFIG.ITEM_LABEL.gold} ${game.resources.gold}</span> <span class="name">Gold</span></span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:800">${CONFIG.ITEM_LABEL.bombs} ${game.resources.bombs}/${CONFIG.BOMB_RESET_THRESHOLD}</span> <span class="name" style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:700">Reset</span></span><span class="resource-count"><span style="color:#b5f9f7;font-weight:800">◇ ${game.stats.lumenCollected}</span> <span class="name">Lumen</span></span>`;
 }
 
 function renderBoard(view = game, { matched = null, dropDistances = null,
@@ -1527,7 +1589,7 @@ function renderBoard(view = game, { matched = null, dropDistances = null,
         marker.textContent = CONFIG.EXIT_LABEL;
         tile.appendChild(marker);
       }
-      if (keyIsAt(view,row,col)) {
+      if (keyIsVisible(view,row,col)) {
         tile.classList.add("key-tile");
         const key = document.createElement("span");
         key.className = "key-mark";
@@ -1692,7 +1754,7 @@ async function playCascadeAnimation(events) {
     const visualState = view => ({
       ...view, playerRow: destination[0], playerCol: destination[1],
       monsters: movedMonsterPositions(view.monsters),
-      hasKey: game.hasKey, lumenPos: game.lumenPos,
+      hasKey: game.hasKey, keyDiscovered:game.keyDiscovered, lumenPos: game.lumenPos,
     });
     if (!cascadeFrames.length) {
       const view = monsterEvent?.before || snapshotBoard(game);
