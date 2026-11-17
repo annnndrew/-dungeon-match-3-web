@@ -6,16 +6,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="theme-color" content="#10220d" />
-  <title>Dungeon Match-3</title>
+  <title>Mrs. Claus's Gingerbread Dungeon Match 3</title>
   <style>
 #spell-panel { z-index:25; }
-#spatula-button { border:1px solid #e3c276; border-radius:8px; padding:7px 9px; background:#58472c; color:#fff3ca; font-size:clamp(10px,2.8vw,12px); font-weight:900; white-space:nowrap; cursor:pointer; box-shadow:0 0 0 1px #e3c27655,0 0 14px #e3c27666; animation:spatula-glow 2.1s ease-in-out infinite; }
-#spatula-button[hidden] { display:none; }
-#spatula-button:disabled { opacity:.55; animation:none; cursor:default; }
-@keyframes spatula-glow { 50% { box-shadow:0 0 0 2px #e3c27688,0 0 20px #e3c27699; } }
-#hp .attack-value { color:#f1d39d; font-weight:800; }
-#hp .attack-value .name { color:#c4d1bc; }
-@media (max-width:360px) { #spatula-button { padding:6px 5px; font-size:10px; } .game-title { letter-spacing:0; font-size:11px; } }
 #spell-panel button { margin:5px 0; }
 #return-spells { color:#f4f0e5;border:1px solid #c4a2e8;background:#473459;padding:9px;border-radius:7px; }
 :root {
@@ -176,21 +169,6 @@ button { font: inherit; }
   pointer-events:none;
 }
 
-.stats-hud {
-  min-height: 58px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  align-items: stretch;
-  font-size: clamp(12px, 3.5vw, 15px);
-}
-#hp { display: flex; flex-wrap: wrap; gap: 5px 12px; align-items: baseline; }
-#hp .hp-value { color: #ec3d5c; font-weight: 800; }
-#hp .food-value { color: #ff7137; font-weight: 800; }
-#hp .score-value { color: #e4b95d; font-weight: 800; }
-#hp .key-value, #resources .key-value { color: #e4d0a0; font-weight: 700; }
-#hp .turn-value { color: #c4d1bc; font-weight: 700; white-space: nowrap; }
-/* Cascade power is transient: show it as a floating reward, not a HUD stat. */
 .hero-bonus-pop { color: #a5f5d3; z-index: 16; }
 .tile.attack-windup .hero-mark { animation: attack-lunge 220ms ease-out both; }
 .tile.attack-target .monster-mark { animation: attack-hit 220ms ease-out both; }
@@ -204,15 +182,8 @@ button { font: inherit; }
   45% { filter:brightness(2); }
   100% { filter:brightness(1); }
 }
-#hp > span { white-space: nowrap; }
-#hp .name { color: #c4d1bc; font-size: .85em; font-weight: 500; }
-#resources .key-value { white-space: nowrap; }
-.bottom-hud { min-height: 10px; }
-#resources { display: flex; flex-wrap: wrap; gap: 3px 13px; align-items: baseline; }
-.resource-count { white-space: nowrap; }
-.resource-count .name { color: #c4d1bc; font-size: .85em; }
-.resource-count .num { color: #c4d1bc; }
 #version { font-size: 10px; color: #a7bda8; text-align: right; }
+.bottom-hud { min-height: 10px; }
 .tile .monster-mark, .tile .key-mark, .tile .lumen-mark { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 900; font-size: clamp(20px, 7vw, 33px); z-index: 3; pointer-events: none; }
 .tile .lumen-mark { color: #f5e4ae; font-size: clamp(25px, 8vw, 40px); text-shadow: 0 0 8px #eac97d, 0 0 3px #fff; background:rgba(99,77,27,.45); border:1px solid rgba(235,196,105,.6); border-radius:3px; }
 .tile .monster-mark { color: #fff5e9; background: #505b63; border: 2px solid #a4b4b4; border-radius: 3px; }
@@ -264,25 +235,149 @@ button { font: inherit; }
 @media (orientation: landscape) and (max-height: 540px) {
   #app { width: min(74vh, 520px); gap: 4px; padding-top: 4px; padding-bottom: 4px; }
   .top-hud { min-height: 28px; }
-  .stats-hud { min-height: 38px; font-size: 11px; }
+  .stats-hud { min-height: 60px; }
   #version { display: none; }
 }
 
 
 .tile.frozen-dark .monster-mark { background:#143e91;border-color:#5193e3;color:#e9f3ff;box-shadow:none; }
 .tile.frozen-light .monster-mark { background:#77b5df;border-color:#d1edff;color:#102a4d;box-shadow:none; }
+
+/* Reset 3.9: five-tile illustrated HUD, inspired by the hand-drawn layout. */
+.top-hud { min-height: 51px; align-items: center; }
+.game-title { display:flex; flex-direction:column; justify-content:center; gap:2px; min-width:0;
+  font-size:clamp(10px,2.8vw,14px); line-height:1.14; letter-spacing:.025em; color:#f3e7d0; }
+.game-title span:first-child { color:#d6b878; }
+.game-title span:last-child { white-space:nowrap; }
+#new-game { flex:none; font-size:clamp(11px,3.1vw,14px); }
+.stats-hud { width:100%; display:flex; flex-direction:column; gap:7px; }
+.primary-stats { display:grid; grid-template-columns:1.25fr 1.05fr 1.05fr .8fr .8fr; gap:clamp(3px,1.3vw,7px); }
+.stat-tile { position:relative; min-width:0; height:clamp(68px,18.5vw,93px); border:2px solid var(--tile-border);
+  background:#193122; border-radius:9px; display:flex; justify-content:center; align-items:center;
+  color:var(--tile-border); padding:4px; overflow:hidden; box-shadow:inset 0 0 0 1px #ffffff0b; }
+.stat-icon { width:clamp(31px,9.6vw,48px); height:clamp(31px,9.6vw,48px); display:block; flex:none;
+  margin-bottom:10px; filter:drop-shadow(0 1px 1px #07120a); }
+.stat-icon svg { display:block; width:100%; height:100%; }
+.stat-tile .stat-number { position:absolute; bottom:3px; right:5px; font-size:clamp(12px,3.8vw,17px);
+  line-height:1; font-weight:900; font-variant-numeric:tabular-nums; color:#fff1d9;
+  text-shadow:0 1px 2px #0d1d11; white-space:nowrap; }
+.stat-tile .stat-number small { font-size:.61em; font-weight:700; color:var(--tile-border); }
+.stat-magic { --tile-border:#ad85e9; width:100%; cursor:default; appearance:none; font:inherit; }
+.stat-magic:disabled { opacity:1; }
+.stat-magic .stat-icon { transform:rotate(-22deg); }
+.stat-magic .magic-charge { position:absolute; bottom:4px; left:4px; font-size:clamp(9px,2.45vw,11px);
+  font-weight:800; line-height:1; color:#dbc2ff; font-variant-numeric:tabular-nums; }
+.stat-magic .attack-number { color:#fff5d9; }
+.stat-magic .cast-indicator { position:absolute; top:3px; right:4px; font-size:clamp(8px,2vw,10px);
+  font-weight:900; letter-spacing:.05em; color:#fff2bc; display:none; }
+.stat-magic.ready { cursor:pointer; background:#493c53; border-color:#d5b4ff;
+  box-shadow:0 0 0 1px #d5b4ffaa,0 0 16px #ad85e9a8,inset 0 0 17px #e7bd6930;
+  animation:spatula-glow 1.9s ease-in-out infinite; }
+.stat-magic.ready .cast-indicator { display:block; }
+.stat-magic.ready .stat-icon { filter:drop-shadow(0 0 6px #ffe4a1); }
+.stat-magic.ready:focus-visible { outline:3px solid white; outline-offset:2px; }
+.stat-magic.ready:disabled { animation:none; cursor:wait; }
+@keyframes spatula-glow { 50% { box-shadow:0 0 0 2px #d5b4ffbb,0 0 23px #ad85e9bd,inset 0 0 19px #e7bd6945; } }
+.stat-magic.boosted .attack-number { color:#91f6c8; transform:scale(1.14); transform-origin:bottom right; }
+.stat-magic .attack-boost { position:absolute; top:3px; left:4px; font-size:clamp(8px,2.2vw,11px);
+  font-weight:900; color:#91f6c8; display:none; }
+.stat-magic.boosted .attack-boost { display:block; }
+.stat-moves { --tile-border:#f07c48; }
+.stat-health { --tile-border:#e74e6a; }
+.stat-objective { --tile-border:#8b957d; background:#1a2d22; border-color:#586b59; }
+.stat-objective .stat-icon { width:clamp(27px,8.5vw,43px); height:clamp(27px,8.5vw,43px);
+  margin-bottom:2px; opacity:.29; filter:grayscale(1) brightness(.75); }
+.stat-objective .objective-question { position:absolute; right:5px; bottom:3px; color:#b0b7a2;
+  font-size:clamp(14px,4.2vw,20px); font-weight:900; }
+.stat-objective.collected { --tile-border:#d9b975; border-color:#d9b975; background:#344b31; }
+.stat-objective.collected .stat-icon { opacity:1; filter:drop-shadow(0 0 5px #f6e4a077); }
+.stat-objective.collected .objective-question { display:none; }
+.stat-objective.santa-collected { border-color:#d9535d; background:#3f3b2e; }
+.stat-objective.santa-collected .stat-icon { filter:drop-shadow(0 0 5px #fff3d2aa); }
+.secondary-stats { display:flex; justify-content:space-between; gap:4px; align-items:center;
+  min-height:17px; font-size:clamp(10px,2.8vw,13px); color:#c2cfb8; white-space:nowrap; }
+.secondary-stats b { color:#f3e5c5; font-weight:900; }
+.secondary-stats .lumen-text { color:#b6e2df; }
+.secondary-stats .score-text { color:#e5bc70; }
+@media(max-width:350px) {
+  .stat-tile { border-width:1.5px; border-radius:6px; }
+  .stat-icon { margin-bottom:9px; }
+  .stat-tile .stat-number { right:3px; bottom:3px; }
+  .stat-magic .magic-charge { left:3px; }
+  .game-title { letter-spacing:-.02em; }
+}
+@media (orientation:landscape) and (max-height:540px) {
+  .stat-tile { height:60px; }
+  .stat-icon { height:30px; width:30px; }
+}
   </style>
 </head>
 <body>
   <main id="app">
     <header class="hud top-hud">
-      <div class="game-title">DUNGEON MATCH</div>
-      <button id="spatula-button" type="button" hidden aria-label="Use charged magic spatula">✦ SPATULA READY</button>
+      <div class="game-title"><span>MRS. CLAUS'S</span><span>GINGERBREAD DUNGEON MATCH 3</span></div>
       <button id="new-game" type="button">New game</button>
     </header>
     <div class="hud stats-hud">
-      <div id="hp">HP 9</div>
-      <div id="resources"></div>
+      <div class="primary-stats" aria-label="Health, moves, magic and objectives">
+        <button id="spatula-button" class="stat-tile stat-magic" type="button" disabled aria-label="Magic spatula: 2 attack, 0 of 9 magic">
+          <span class="stat-icon" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="23" y="5" width="19" height="30" rx="8" fill="#d6a76c" stroke="#f7e2b5" stroke-width="2.4"/>
+            <path d="M29 11V26M36 11V26" stroke="#704d30" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M30 33V55" stroke="#f7e2b5" stroke-width="7" stroke-linecap="round"/>
+            <circle cx="30" cy="55" r="2" fill="#69452b"/>
+          </svg></span>
+          <span class="cast-indicator" aria-hidden="true">CAST</span>
+          <span class="attack-boost" id="attack-boost" aria-hidden="true">+0</span>
+          <span class="magic-charge" id="magic-count">✦ 0/9</span>
+          <span class="stat-number attack-number"><span id="attack-count">2</span> <small>ATK</small></span>
+        </button>
+        <div class="stat-tile stat-moves" id="moves-tile" role="img" aria-label="60 moves">
+          <span class="stat-icon" aria-hidden="true"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="32" cy="32" r="24" fill="#f4e5c8" stroke="#d7ae75" stroke-width="2"/>
+            <g fill="#d33d48">
+              <path d="M32 32C37 25 38 18 32 8C45 9 55 20 56 32C48 29 41 28 32 32Z"/>
+              <path d="M32 32C37 25 38 18 32 8C45 9 55 20 56 32C48 29 41 28 32 32Z" transform="rotate(72 32 32)"/>
+              <path d="M32 32C37 25 38 18 32 8C45 9 55 20 56 32C48 29 41 28 32 32Z" transform="rotate(144 32 32)"/>
+              <path d="M32 32C37 25 38 18 32 8C45 9 55 20 56 32C48 29 41 28 32 32Z" transform="rotate(216 32 32)"/>
+              <path d="M32 32C37 25 38 18 32 8C45 9 55 20 56 32C48 29 41 28 32 32Z" transform="rotate(288 32 32)"/>
+            </g><circle cx="32" cy="32" r="4" fill="#f4e5c8"/>
+          </svg></span>
+          <span class="stat-number" id="move-count">60</span>
+        </div>
+        <div class="stat-tile stat-health" id="health-tile" role="img" aria-label="9 of 9 health">
+          <span class="stat-icon" aria-hidden="true"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+            <path d="M32 55 9 31C-1 19 8 7 20 9c5 1 9 4 12 9 3-5 7-8 12-9 12-2 21 10 11 22L32 55Z" fill="#e84965" stroke="#ffd6dc" stroke-width="2.5" stroke-linejoin="round"/>
+            <path d="M15 18c3-5 8-5 12-1" stroke="#ffadb8" stroke-width="3" stroke-linecap="round"/>
+          </svg></span>
+          <span class="stat-number" id="health-count">9/9</span>
+        </div>
+        <div class="stat-tile stat-objective" id="key-tile" role="img" aria-label="Key not collected">
+          <span class="stat-icon" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="21" cy="24" r="11" stroke="#edc57e" stroke-width="8"/>
+            <path d="M29 32 51 53M42 44l8-8M47 49l7-7" stroke="#edc57e" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg></span>
+          <span class="objective-question" aria-hidden="true">?</span>
+        </div>
+        <div class="stat-tile stat-objective" id="santa-tile" role="img" aria-label="Santa not rescued">
+          <span class="stat-icon" aria-hidden="true"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 28C17 8 35 5 51 24L43 32 12 28Z" fill="#c82d44" stroke="#fff3d9" stroke-width="2"/>
+            <circle cx="51" cy="24" r="5" fill="#fff8e9"/>
+            <rect x="10" y="25" width="38" height="10" rx="5" fill="#fff8e9"/>
+            <ellipse cx="30" cy="42" rx="17" ry="18" fill="#fff5e6"/>
+            <ellipse cx="30" cy="37" rx="11" ry="10" fill="#f1bf9d"/>
+            <circle cx="26" cy="36" r="1.7" fill="#273628"/><circle cx="35" cy="36" r="1.7" fill="#273628"/>
+            <ellipse cx="30" cy="43" rx="4" ry="3" fill="#e8877b"/>
+            <path d="M20 46Q30 57 40 46Q38 61 30 61Q22 61 20 46Z" fill="#fff"/>
+          </svg></span>
+          <span class="objective-question" aria-hidden="true">?</span>
+        </div>
+      </div>
+      <div class="secondary-stats" aria-label="Level, lumenstones and score">
+        <span>LEVEL <b id="level-count">1/3</b></span>
+        <span class="lumen-text">◇ <b id="lumen-count">0/3</b> LUMEN</span>
+        <span class="score-text">SCORE <b id="score-count">0</b></span>
+      </div>
     </div>
     <button id="return-spells" type="button" hidden>Back to Spells</button>
     <div id="status" class="hud game-status">Find the key, then escape.</div>
@@ -295,7 +390,7 @@ button { font: inherit; }
       <div id="spell-panel" class="results hidden" role="dialog" aria-modal="true" aria-label="Choose a magic spatula spell"></div>
     </section>
 
-    <footer class="hud bottom-hud"><div id="version">web reset 3.8 • Mrs. Claus & the magic spatula</div></footer>
+    <footer class="hud bottom-hud"><div id="version">web reset 3.9 • Mrs. Claus & the magic spatula</div></footer>
   </main>
 
   <script>
@@ -580,7 +675,7 @@ function matchSummary(state) {
 }
 
 function runData(state) {
-  return {version:"3.7",outcome:state.gameWon ? "rescued" : state.gameOverReason || "in-progress",
+  return {version:"3.9",outcome:state.gameWon ? "rescued" : state.gameOverReason || "in-progress",
     stage:state.stage,alarmActive:state.alarmActive,keyDiscovered:state.keyDiscovered,lumenDiscovered:state.lumenDiscovered,health:state.hp,resources:{...state.resources},score:scoreBreakdown(state),
     matches:matchSummary(state),stats:state.stats};
 }
@@ -1196,6 +1291,7 @@ function resolveAllMatches(state, rng = defaultRng, {source="natural"} = {}) {
             cells:run.map(pos=>[...pos])})),
         });
         pendingFrame = {
+          source, wave:waveNumber,
           before: snapshotBoard(state),
           matches: runs.map((run,i) => ({
             cells: run.map(pos => [...pos]),
@@ -1372,7 +1468,7 @@ function advanceStage(state, rng = defaultRng) {
   };
   Object.assign(state, next, persistent);
   state.magicReady = state.resources.bombs >= CONFIG.MAGIC_THRESHOLD;
-  state.lastEvent = `STAGE ${state.stage} — ${state.stage === CONFIG.STAGE_COUNT ? "RESCUE SANTA" : "FIND THE KEY"}`;
+  state.lastEvent = `LEVEL ${state.stage} — ${state.stage === CONFIG.STAGE_COUNT ? "RESCUE SANTA" : "FIND THE KEY"}`;
   updateScore(state);
 }
 
@@ -1595,8 +1691,18 @@ const spellPanelEl=document.querySelector("#spell-panel");
 const returnSpellsBtn=document.querySelector("#return-spells");
 const spatulaBtn=document.querySelector("#spatula-button");
 const statusEl = document.querySelector("#status");
-const hpEl = document.querySelector("#hp");
-const resourcesEl = document.querySelector("#resources");
+const magicCountEl = document.querySelector("#magic-count");
+const attackCountEl = document.querySelector("#attack-count");
+const attackBoostEl = document.querySelector("#attack-boost");
+const movesCountEl = document.querySelector("#move-count");
+const movesTileEl = document.querySelector("#moves-tile");
+const healthCountEl = document.querySelector("#health-count");
+const healthTileEl = document.querySelector("#health-tile");
+const keyTileEl = document.querySelector("#key-tile");
+const santaTileEl = document.querySelector("#santa-tile");
+const levelCountEl = document.querySelector("#level-count");
+const lumenCountEl = document.querySelector("#lumen-count");
+const scoreCountEl = document.querySelector("#score-count");
 const resultsEl = document.querySelector("#results");
 const newGameBtn = document.querySelector("#new-game");
 const flashEl = document.querySelector("#flash");
@@ -1613,7 +1719,7 @@ function resetGame() {
   animating = false;
   matchFxEl.replaceChildren();
   game = newGame();
-  spellPanelEl.classList.add("hidden");returnSpellsBtn.hidden=true;spatulaBtn.hidden=true;
+  spellPanelEl.classList.add("hidden");returnSpellsBtn.hidden=true;
   pointerStart = null;
   render();
 }
@@ -1672,7 +1778,7 @@ function renderResults() {
         <div>New rooms: +${scoreBreakdown(game).rooms}</div>
         <div>Key: +${scoreBreakdown(game).key}</div>
         <div>Lumenstones (${game.stats.lumenCollected}): +${scoreBreakdown(game).lumen}</div>
-        <div>Stages / rescue: +${scoreBreakdown(game).escape}</div>
+        <div>Levels / rescue: +${scoreBreakdown(game).escape}</div>
         <div>Health bonus: +${scoreBreakdown(game).survival}</div>
         <div>Turns (${game.stats.turns}): −${scoreBreakdown(game).turns}</div>
         <div>Matches: ${matchStats.total}</div>
@@ -1680,7 +1786,7 @@ function renderResults() {
         <div>Match waves: ${matchStats.waves} (${matchStats.cascadeWaves} cascade)</div>
         <div>Longest cascade: ${matchStats.longestCascade} waves</div>
         <div>Matched tiles cleared: ${matchStats.clearedTiles}</div>
-        <div>Matches by stage: ${[1,2,3].map(n=>matchStats.byStage[n]||0).join(" / ")}</div>
+        <div>Matches by level: ${[1,2,3].map(n=>matchStats.byStage[n]||0).join(" / ")}</div>
         <div>Peak health: ${game.stats.peakHealth}</div>
         <div>Alarms triggered: ${game.stats.alarmTriggers.length}</div>
         <div>Spell offers: ${game.stats.spellOffers} · Passed: ${game.stats.spellPasses}</div>
@@ -1746,17 +1852,38 @@ function renderSpellChoice() {
   });
 }
 
+function setAttackDisplay(bonus = 0) {
+  const effective = CONFIG.BASE_ATTACK_DAMAGE + bonus;
+  attackCountEl.textContent = effective;
+  attackBoostEl.textContent = `+${bonus}`;
+  spatulaBtn.classList.toggle("boosted", bonus > 0);
+  spatulaBtn.setAttribute("aria-label", `Magic spatula: ${effective} attack, ${game.resources.bombs} of ${CONFIG.MAGIC_THRESHOLD} magic${game.magicReady ? "; ready to cast" : ""}`);
+}
+
 function renderHud() {
   statusEl.textContent = statusText();
   statusEl.classList.toggle("damage", game.lastProximityDamage + game.lastAttackDamage > 0);
   statusEl.classList.toggle("danger", !game.gameOver && !game.gameWon &&
     isThreatened(game, game.playerRow, game.playerCol));
-  // First line: the numbers a player checks most often during a turn.
-  hpEl.innerHTML = `<span class="hp-value">♥ ${game.hp}/${CONFIG.MAX_HP}</span><span class="food-value">${CONFIG.ITEM_LABEL.food} ${game.resources.food} <span class="name">Moves</span></span><span class="attack-value">⚔ ${CONFIG.BASE_ATTACK_DAMAGE} <span class="name">ATK</span></span><span class="turn-value">TURN ${game.stats.turns}</span><span class="score-value">SCORE ${game.score}</span>`;
-  spatulaBtn.hidden = !game.magicReady || game.gameOver || game.gameWon || !!game.spellOffer;
-  spatulaBtn.disabled = animating;
-  // Second line: objectives and other resources. Use the same icons as the board.
-  resourcesEl.innerHTML = `<span>STAGE ${game.stage}/3</span><span>ENEMIES ${game.monsters.length}</span><span class="key-value">${game.stage === CONFIG.STAGE_COUNT ? "SANTA" : "KEY"} ${game.hasKey ? "✓" : game.keyDiscovered ? "!" : "?"}</span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.gold};font-weight:800">${CONFIG.ITEM_LABEL.gold} ${game.resources.gold}</span> <span class="name">Gold</span></span><span class="resource-count"><span style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:800">${CONFIG.ITEM_LABEL.bombs} ${game.resources.bombs}/${CONFIG.MAGIC_THRESHOLD}</span> <span class="name" style="color:${CONFIG.ITEM_COLOR.bombs};font-weight:700">${game.magicReady ? "CHARGED" : "Magic"}</span></span><span class="resource-count"><span style="color:#b5f9f7;font-weight:800">◇ ${game.stats.lumenCollected}</span> <span class="name">Lumen</span></span>`;
+  movesCountEl.textContent = game.resources.food;
+  movesTileEl.setAttribute("aria-label", `${game.resources.food} moves remaining`);
+  healthCountEl.textContent = `${game.hp}/${CONFIG.MAX_HP}`;
+  healthTileEl.setAttribute("aria-label", `${game.hp} of ${CONFIG.MAX_HP} health`);
+  magicCountEl.textContent = `✦ ${game.resources.bombs}/${CONFIG.MAGIC_THRESHOLD}`;
+  spatulaBtn.classList.toggle("ready", game.magicReady && !game.gameOver && !game.gameWon);
+  spatulaBtn.disabled = !game.magicReady || game.gameOver || game.gameWon || animating || !!game.spellOffer;
+  setAttackDisplay(0);
+  // The key is per-level. On the final level the objective is Santa instead.
+  const keyCollected = game.stage < CONFIG.STAGE_COUNT && game.hasKey;
+  const santaCollected = game.stage === CONFIG.STAGE_COUNT && game.hasKey;
+  keyTileEl.classList.toggle("collected", keyCollected);
+  santaTileEl.classList.toggle("collected", santaCollected);
+  santaTileEl.classList.toggle("santa-collected", santaCollected);
+  keyTileEl.setAttribute("aria-label", keyCollected ? "Key collected" : "Key not collected");
+  santaTileEl.setAttribute("aria-label", santaCollected ? "Santa rescued; reach the exit" : "Santa not rescued");
+  levelCountEl.textContent = `${game.stage}/${CONFIG.STAGE_COUNT}`;
+  lumenCountEl.textContent = `${game.stats.lumenCollected}/${CONFIG.STAGE_COUNT}`;
+  scoreCountEl.textContent = game.score;
 }
 
 function renderBoard(view = game, { matched = null, dropDistances = null,
@@ -1942,6 +2069,7 @@ async function playCascadeAnimation(events) {
     if (!isActive()) return;
     matchFxEl.replaceChildren();
     renderBoard(viewFor(frame.after), { dropDistances: frame.dropDistances });
+    if(frame.source === "swap")setAttackDisplay(Math.max(0,frame.wave - 1));
     await wait(460);
   }
 
@@ -1966,6 +2094,7 @@ async function playCascadeAnimation(events) {
     });
     await wait(230);
     if (!isActive()) return;
+    setAttackDisplay(0); // Cascade power was just spent on this attack.
     renderBoard(attackEvent.after, {
       heroFrom: attackEvent.killed
         ? [attackEvent.before.playerRow,attackEvent.before.playerCol] : null,
