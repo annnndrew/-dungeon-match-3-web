@@ -45,24 +45,56 @@ button { font: inherit; }
   padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 8px;
+  justify-content: flex-start;
+  gap: 7px;
+  background: #144636;
 }
 
 .hud { width: 100%; }
 .top-hud { display: flex; align-items: center; gap: 8px; min-height: 34px; }
-#status { font-size: clamp(11px, 3vw, 13px); line-height: 1.2; color: var(--muted); }
-.game-title { flex: 1; font-size: 12px; font-weight: 800; letter-spacing: .09em; color: var(--text); }
-.game-status { min-height: 16px; text-align: center; }
-.game-status.danger { color: #ffae90 !important; }
-.game-status.damage { color: #ff6666 !important; font-weight: 800; }
-#new-game {
-  border: 1px solid #52735b;
-  background: #2b503c;
+#status {
+  min-height: 20px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #0e271f;
+  text-align: center;
+  font-size: clamp(10px, 2.65vw, 13px);
+  line-height: 1.25;
   color: var(--text);
-  border-radius: 8px;
-  padding: 7px 9px;
 }
+.game-title { flex: 1; font-weight: 800; }
+#status.danger { color: #ffae90; }
+#status.damage { color: #ff7a7a; font-weight: 800; }
+.header-actions { display: flex; flex: none; align-items: center; gap: clamp(6px, 3vw, 14px); }
+#show-help, #new-game {
+  min-height: 36px;
+  border: 1px solid #527a59;
+  color: var(--text);
+  cursor: pointer;
+}
+#show-help {
+  width: 36px;
+  padding: 0;
+  border-color: #728c65;
+  border-radius: 50%;
+  background: transparent;
+  color: #cfdbb1;
+  font-size: 18px;
+}
+#new-game {
+  background: #1d623f;
+  border-radius: 8px;
+  padding: 6px 8px;
+  white-space: nowrap;
+}
+#help-dialog {
+  width: min(calc(100% - 32px), 330px);
+  color: var(--text);
+}
+#help-dialog::backdrop { background: #000b; }
+#help-dialog p { text-align: left; font-size: 14px; line-height: 1.5; }
 
 #board-wrap { position: relative; width: 100%; }
 #board {
@@ -255,18 +287,23 @@ button { font: inherit; }
 .tile.frozen-dark .monster-mark { background:#143e91;border-color:#5193e3;color:#e9f3ff;box-shadow:none; }
 .tile.frozen-light .monster-mark { background:#77b5df;border-color:#d1edff;color:#102a4d;box-shadow:none; }
 
-/* Reset 3.9: five-tile illustrated HUD, inspired by the hand-drawn layout. */
-.top-hud { min-height: 51px; align-items: center; }
+/* November 18 mockup: three equal stat cards, then two narrower objectives. */
+.top-hud { min-height: 40px; }
 .game-title { display:flex; flex-direction:column; justify-content:center; gap:2px; min-width:0;
   font-size:clamp(10px,2.8vw,14px); line-height:1.14; letter-spacing:.025em; color:#f3e7d0; }
 .game-title span:first-child { color:var(--gold); }
-.game-title span:last-child { white-space:nowrap; }
-#new-game { flex:none; font-size:clamp(11px,3.1vw,14px); }
-.stats-hud { width:100%; display:flex; flex-direction:column; gap:7px; }
-.primary-stats { display:grid; grid-template-columns:1.25fr 1.05fr 1.05fr .8fr .8fr; gap:clamp(3px,1.3vw,7px); }
-.stat-tile { position:relative; min-width:0; height:clamp(68px,18.5vw,93px); border:2px solid var(--tile-border);
-  background:#193b30; border-radius:9px; display:flex; justify-content:center; align-items:center;
-  color:var(--tile-border); padding:4px; overflow:hidden; box-shadow:inset 0 0 0 1px #ffffff0b; }
+#new-game { font-size:clamp(11px,3.1vw,14px); }
+.stats-hud { display:flex; flex-direction:column; gap:6px; }
+.primary-stats {
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr)) minmax(0, .15fr) repeat(2, minmax(0, .71fr));
+  gap:clamp(4px,1.4vw,8px);
+  padding-inline:2px;
+}
+#key-tile { grid-column:5; }
+.stat-tile { position:relative; min-width:0; height:clamp(53px,18.1vw,93px); border:2px solid var(--tile-border);
+  background:transparent; border-radius:3px; display:flex; justify-content:center; align-items:center;
+  color:var(--tile-border); padding:4px; overflow:hidden; }
 .stat-icon { width:clamp(31px,9.6vw,48px); height:clamp(31px,9.6vw,48px); display:block; flex:none;
   margin-bottom:10px; filter:drop-shadow(0 1px 1px #07120a); }
 .stat-icon svg { display:block; width:100%; height:100%; }
@@ -294,11 +331,11 @@ button { font: inherit; }
 .stat-magic .attack-boost { position:absolute; top:3px; left:4px; font-size:clamp(8px,2.2vw,11px);
   font-weight:900; color:var(--mint); display:none; }
 .stat-magic.boosted .attack-boost { display:block; }
-.stat-moves { --tile-border:var(--moves); }
+.stat-moves { --tile-border:var(--text); }
 .stat-health { --tile-border:var(--health); }
-.stat-objective { --tile-border:#a4af9c; background:#203a31; border-color:#61796c; }
+.stat-objective { --tile-border:#397053; border:3px solid var(--tile-border); }
 .stat-objective .stat-icon { width:clamp(27px,8.5vw,43px); height:clamp(27px,8.5vw,43px);
-  margin-bottom:2px; opacity:.42; filter:grayscale(1) brightness(.85); }
+  margin-bottom:2px; opacity:.40; filter:grayscale(1) sepia(.35) brightness(.70); }
 .stat-objective .objective-question { position:absolute; right:5px; bottom:3px; color:#b0b7a2;
   font-size:clamp(14px,4.2vw,20px); font-weight:900; }
 .stat-objective.collected { --tile-border:var(--gold); border-color:var(--gold); background:#344b31; }
@@ -306,13 +343,14 @@ button { font: inherit; }
 .stat-objective.collected .objective-question { display:none; }
 .stat-objective.santa-collected { border-color:var(--health); background:#3f3b2e; }
 .stat-objective.santa-collected .stat-icon { filter:drop-shadow(0 0 5px #fff3d2aa); }
-.secondary-stats { display:flex; justify-content:space-between; gap:4px; align-items:center;
-  min-height:17px; font-size:clamp(10px,2.8vw,13px); color:var(--muted); white-space:nowrap; }
+.secondary-stats { display:flex; gap:clamp(8px,3vw,16px); align-items:center;
+  min-height:17px; padding-inline:2px; font-size:clamp(10px,2.8vw,13px);
+  color:var(--muted); white-space:nowrap; }
 .secondary-stats b { color:#f3e5c5; font-weight:900; }
-.secondary-stats .lumen-text { color:#b6e2df; }
-.secondary-stats .score-text { color:var(--gold); }
+.secondary-stats .score-text { color:var(--gold); margin-left:auto; }
 @media(max-width:350px) {
-  .stat-tile { border-width:1.5px; border-radius:6px; }
+  .stat-tile:not(.stat-objective) { border-width:1.5px; }
+  .header-actions { gap:6px; }
   .stat-icon { margin-bottom:9px; }
   .stat-tile .stat-number { right:3px; bottom:3px; }
   .stat-magic .magic-charge { left:3px; }
@@ -328,7 +366,10 @@ button { font: inherit; }
   <main id="app">
     <header class="hud top-hud">
       <div class="game-title"><span>MRS. CLAUS'S</span><span>GINGERBREAD DUNGEON MATCH 3</span></div>
-      <button id="new-game" type="button">New game</button>
+      <div class="header-actions">
+        <button id="show-help" type="button" aria-label="How to play" aria-haspopup="dialog">?</button>
+        <button id="new-game" type="button">New game</button>
+      </div>
     </header>
     <div class="hud stats-hud">
       <div class="primary-stats" aria-label="Health, moves, magic and objectives">
@@ -387,12 +428,12 @@ button { font: inherit; }
       </div>
       <div class="secondary-stats" aria-label="Level, lumenstones and score">
         <span>LEVEL <b id="level-count">1/3</b></span>
-        <span class="lumen-text">◇ <b id="lumen-count">0/3</b> LUMEN</span>
+        <span>LUMENSTONES <b id="lumen-count">0/3</b></span>
         <span class="score-text">SCORE <b id="score-count">0</b></span>
       </div>
     </div>
     <button id="return-spells" type="button" hidden>Back to Spells</button>
-    <div id="status" class="hud game-status">Find the key, then escape.</div>
+    <div id="status" class="hud" role="status">Find the key, then escape.</div>
 
     <section id="board-wrap" aria-label="Dungeon Match-3 board">
       <div id="board"></div>
@@ -402,8 +443,15 @@ button { font: inherit; }
       <div id="spell-panel" class="results hidden" role="dialog" aria-modal="true" aria-label="Choose a magic spatula spell"></div>
     </section>
 
-    <footer class="hud bottom-hud"><div id="version">web reset 3.10 • Mrs. Claus & the magic spatula</div></footer>
+    <footer class="hud bottom-hud"><div id="version">Reset 4.0 layout preview • Mrs. Claus & the magic spatula</div></footer>
   </main>
+  <dialog id="help-dialog" class="results-panel" aria-labelledby="help-title">
+    <h2 id="help-title">How to play</h2>
+    <p>Swipe from a tile toward a neighbor to swap resources. Match three or more in a row or column. A successful match moves your hero in the swipe direction, or attacks if a monster is in the way.</p>
+    <p>Find the key and reach the exit. On the final level, rescue Santa and bring him to the exit. The key and Santa are revealed from one tile away. Red tiles warn of damage on your next move.</p>
+    <p>When the spatula reaches 9/9 Magic, tap it to choose a spell.</p>
+    <form method="dialog"><button type="submit">Back to game</button></form>
+  </dialog>
 
   <script>
 const CONFIG = {
@@ -1753,7 +1801,7 @@ function statusText() {
     ? "ALARM — Santa is with you — reach exit >!" : "ALARM — all monsters hunting — reach exit >!";
   const objective=game.stage===CONFIG.STAGE_COUNT ? "Santa" : "the key";
   return game.keyDiscovered ? `${objective} spotted — collect ${game.stage===CONFIG.STAGE_COUNT ? "S" : "K"}!`
-    : `Search the rooms for ${objective} — revealed from one tile away`;
+    : `Search the rooms for ${objective}.`;
 }
 
 function resultsTitle() {
@@ -2221,6 +2269,8 @@ boardEl.addEventListener("pointerup", (event) => {
 boardEl.addEventListener("pointercancel", () => { pointerStart = null; });
 boardEl.addEventListener("contextmenu", (event) => event.preventDefault());
 newGameBtn.addEventListener("click", resetGame);
+const helpDialog = document.querySelector("#help-dialog");
+document.querySelector("#show-help").addEventListener("click", () => helpDialog.showModal());
 returnSpellsBtn.addEventListener("click",()=>{game.spellPanelHidden=false;renderSpellChoice();});
 spatulaBtn.addEventListener("click",()=>{
   if(animating || !game || !activateSpatula(game))return;
