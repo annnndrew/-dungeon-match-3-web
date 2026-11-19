@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="theme-color" content="#10220d" />
+  <meta name="theme-color" content="#102f29" />
   <title>Mrs. Claus's Gingerbread Dungeon Match 3</title>
   <style>
 #spell-panel { z-index:25; }
@@ -13,12 +13,23 @@
 #return-spells { color:#f4f0e5;border:1px solid #c4a2e8;background:#473459;padding:9px;border-radius:7px; }
 :root {
   color-scheme: dark;
-  --bg: #10220d;
-  --panel: #244531;
-  --text: #f4f0e5;
-  --muted: #c4d1bc;
-  --floor: #3c573d;
-  --wall: #203d2b;
+  /* Reset 3.10 — vintage Christmas storybook palette.
+     Purple remains the primary Magic color; mint is a secondary accent. */
+  --bg: #102f29;         /* deep pine */
+  --panel: #254438;
+  --text: #f2e8d2;       /* warm ivory */
+  --muted: #b8c7b4;
+  --floor: #344d3c;      /* moss */
+  --floor-alt: #3a5542;  /* gentle floor variation */
+  --floor-lit: #476c4d;  /* sage */
+  --wall: #1d392f;
+  --magic: #a56beb;      /* KEEP purple */
+  --magic-bright: #caa0ff;
+  --health: #d93450;
+  --moves: #e67a45;
+  --gold: #f0b83f;
+  --gingerbread: #c78a47;
+  --mint: #69dfa2;
   --gap: 3px;
 }
 
@@ -40,15 +51,15 @@ button { font: inherit; }
 
 .hud { width: 100%; }
 .top-hud { display: flex; align-items: center; gap: 8px; min-height: 34px; }
-#status { font-size: clamp(11px, 3vw, 13px); line-height: 1.2; color: #c4d1bc; }
-.game-title { flex: 1; font-size: 12px; font-weight: 800; letter-spacing: .09em; color: #c6c6d0; }
+#status { font-size: clamp(11px, 3vw, 13px); line-height: 1.2; color: var(--muted); }
+.game-title { flex: 1; font-size: 12px; font-weight: 800; letter-spacing: .09em; color: var(--text); }
 .game-status { min-height: 16px; text-align: center; }
 .game-status.danger { color: #ffae90 !important; }
 .game-status.damage { color: #ff6666 !important; font-weight: 800; }
 #new-game {
-  border: 1px solid #55735c;
-  background: #294b35;
-  color: #f4f0e5;
+  border: 1px solid #52735b;
+  background: #2b503c;
+  color: var(--text);
   border-radius: 8px;
   padding: 7px 9px;
 }
@@ -74,9 +85,10 @@ button { font: inherit; }
   overflow: hidden;
 }
 .tile.floor { background: var(--floor); }
-.tile.floor:nth-child(4n + 2) { background: #486349; }
-.tile.floor:nth-child(7n + 3) { background: #506a50; }
-.tile.floor:nth-child(11n + 1) { background: #345136; }
+/* Close-value floor variation keeps the board legible without competing with symbols. */
+.tile.floor:nth-child(4n + 2) { background: var(--floor-alt); }
+.tile.floor:nth-child(7n + 3) { background: #3d5945; }
+.tile.floor:nth-child(11n + 1) { background: #304737; }
 .tile.wall { background: var(--wall); }
 .tile .resource {
   font-size: clamp(17px, 6.2vw, 30px);
@@ -136,23 +148,23 @@ button { font: inherit; }
   pointer-events: none;
 }
 .tile .marker.entrance { left: 4px; color: rgb(145,185,195); }
-.tile.entrance-tile { background: #274b44; border: 1px solid #9dbbb5; }
+.tile.entrance-tile { background: #284a41; border: 1px solid #9abdb3; }
 .tile.entrance-tile .marker.entrance { left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: clamp(16px, 5vw, 26px); }
 .tile.entrance-tile.hero .marker.entrance { opacity: .45; }
-.tile.exit-tile { background: #51482e; border: 1px solid #d5a858; }
+.tile.exit-tile { background: #4a432b; border: 1px solid var(--gold); }
 .tile.exit-tile .marker.exit { right: 50%; top: 50%; transform: translate(50%, -50%); font-size: clamp(16px, 5vw, 26px); }
 .tile.exit-tile.hero .marker.exit { opacity: .45; }
 /* A subtle heat map replaces threat outlines. Each adjacent monster adds
    another 20%-opacity red layer: 1 = 20%, 2 = 36%, 3 = 48.8%, etc.
    Tint is painted behind resources, markers, and sprites for readability. */
 .tile.heat.floor {
-  background: linear-gradient(rgba(189, 40, 67, var(--heat-alpha)), rgba(189, 40, 67, var(--heat-alpha))), var(--floor);
+  background: linear-gradient(rgba(185, 38, 66, var(--heat-alpha)), rgba(185, 38, 66, var(--heat-alpha))), var(--floor);
 }
 .tile.heat.entrance-tile {
-  background: linear-gradient(rgba(189, 40, 67, var(--heat-alpha)), rgba(189, 40, 67, var(--heat-alpha))), #274b44;
+  background: linear-gradient(rgba(185, 38, 66, var(--heat-alpha)), rgba(185, 38, 66, var(--heat-alpha))), #284a41;
 }
 .tile.heat.exit-tile {
-  background: linear-gradient(rgba(189, 40, 67, var(--heat-alpha)), rgba(189, 40, 67, var(--heat-alpha))), #51482e;
+  background: linear-gradient(rgba(185, 38, 66, var(--heat-alpha)), rgba(185, 38, 66, var(--heat-alpha))), #4a432b;
 }
 .tile.recent-hit .hero-mark { animation: hero-hit .34s ease-out; }
 @keyframes hero-hit { 0%, 55% { color: #ff5151; transform:scale(1.3); } 100% { color:#fff; transform:scale(1); } }
@@ -163,13 +175,13 @@ button { font: inherit; }
   display:grid; place-items:center;
   font-size:clamp(24px,8vw,39px);
   font-weight:900; line-height:1;
-  color:#fff;
+  color:var(--text);
   text-shadow:0 1px 2px #111, 0 0 5px #111;
   z-index:4;
   pointer-events:none;
 }
 
-.hero-bonus-pop { color: #a5f5d3; z-index: 16; }
+.hero-bonus-pop { color: var(--mint); z-index: 16; }
 .tile.attack-windup .hero-mark { animation: attack-lunge 220ms ease-out both; }
 .tile.attack-target .monster-mark { animation: attack-hit 220ms ease-out both; }
 @keyframes attack-lunge {
@@ -182,14 +194,14 @@ button { font: inherit; }
   45% { filter:brightness(2); }
   100% { filter:brightness(1); }
 }
-#version { font-size: 10px; color: #a7bda8; text-align: right; }
+#version { font-size: 10px; color: #9fb7a5; text-align: right; }
 .bottom-hud { min-height: 10px; }
 .tile .monster-mark, .tile .key-mark, .tile .lumen-mark { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 900; font-size: clamp(20px, 7vw, 33px); z-index: 3; pointer-events: none; }
-.tile .lumen-mark { color: #f5e4ae; font-size: clamp(25px, 8vw, 40px); text-shadow: 0 0 8px #eac97d, 0 0 3px #fff; background:rgba(99,77,27,.45); border:1px solid rgba(235,196,105,.6); border-radius:3px; }
+.tile .lumen-mark { color: #f2e8d2; font-size: clamp(25px, 8vw, 40px); text-shadow: 0 0 8px #f0b83f, 0 0 3px #fff; background:rgba(105,78,30,.45); border:1px solid rgba(240,184,63,.65); border-radius:3px; }
 .tile .monster-mark { color: #fff5e9; background: #505b63; border: 2px solid #a4b4b4; border-radius: 3px; }
 .tile .monster-pattern { position:absolute; right:1px; bottom:0; font-size:11px; line-height:12px; color:#fff5df; pointer-events:none; }
 .tile.aggro .monster-mark { background: #a83d42; color: #fff5df; border-color: #efc778; box-shadow: inset 0 0 0 1px #efc778; }
-.tile .key-mark { color: #202114; background: #d6ab61; border: 2px solid #f2d9a6; border-radius: 3px; }
+.tile .key-mark { color: #1b2d25; background: var(--gold); border: 2px solid #f2e8d2; border-radius: 3px; }
 .tile.monster-tile .resource, .tile.key-tile .resource, .tile.lumen-tile .resource { visibility: hidden; }
 
 #flash {
@@ -217,8 +229,8 @@ button { font: inherit; }
 .results.hidden { display: none; }
 .results-panel {
   width: min(86%, 330px);
-  background: rgba(23,47,30,.98);
-  border: 1px solid #58735b;
+  background: rgba(20,47,39,.98);
+  border: 1px solid #6b8068;
   border-radius: 12px;
   padding: 18px;
   text-align: center;
@@ -228,9 +240,9 @@ button { font: inherit; }
 }
 .results-panel h2 { margin: 0 0 8px; font-size: 26px; }
 .results-panel .score { font-size: 21px; margin-bottom: 14px; }
-.escape-bonus { color: #e4b95d; font-size: 12px; margin-top: 5px; }
+.escape-bonus { color: var(--gold); font-size: 12px; margin-top: 5px; }
 .results-list { display: grid; gap: 5px; text-align: left; margin: 0 auto 16px; width: fit-content; }
-.results-panel button { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #718c6c; background: #34563e; color: #f4f0e5; }
+.results-panel button { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #718c6c; background: #34563e; color: var(--text); }
 
 @media (orientation: landscape) and (max-height: 540px) {
   #app { width: min(74vh, 520px); gap: 4px; padding-top: 4px; padding-bottom: 4px; }
@@ -247,13 +259,13 @@ button { font: inherit; }
 .top-hud { min-height: 51px; align-items: center; }
 .game-title { display:flex; flex-direction:column; justify-content:center; gap:2px; min-width:0;
   font-size:clamp(10px,2.8vw,14px); line-height:1.14; letter-spacing:.025em; color:#f3e7d0; }
-.game-title span:first-child { color:#d6b878; }
+.game-title span:first-child { color:var(--gold); }
 .game-title span:last-child { white-space:nowrap; }
 #new-game { flex:none; font-size:clamp(11px,3.1vw,14px); }
 .stats-hud { width:100%; display:flex; flex-direction:column; gap:7px; }
 .primary-stats { display:grid; grid-template-columns:1.25fr 1.05fr 1.05fr .8fr .8fr; gap:clamp(3px,1.3vw,7px); }
 .stat-tile { position:relative; min-width:0; height:clamp(68px,18.5vw,93px); border:2px solid var(--tile-border);
-  background:#193122; border-radius:9px; display:flex; justify-content:center; align-items:center;
+  background:#193b30; border-radius:9px; display:flex; justify-content:center; align-items:center;
   color:var(--tile-border); padding:4px; overflow:hidden; box-shadow:inset 0 0 0 1px #ffffff0b; }
 .stat-icon { width:clamp(31px,9.6vw,48px); height:clamp(31px,9.6vw,48px); display:block; flex:none;
   margin-bottom:10px; filter:drop-shadow(0 1px 1px #07120a); }
@@ -262,43 +274,43 @@ button { font: inherit; }
   line-height:1; font-weight:900; font-variant-numeric:tabular-nums; color:#fff1d9;
   text-shadow:0 1px 2px #0d1d11; white-space:nowrap; }
 .stat-tile .stat-number small { font-size:.61em; font-weight:700; color:var(--tile-border); }
-.stat-magic { --tile-border:#ad85e9; width:100%; cursor:default; appearance:none; font:inherit; }
+.stat-magic { --tile-border:var(--magic); width:100%; cursor:default; appearance:none; font:inherit; }
 .stat-magic:disabled { opacity:1; }
 .stat-magic .stat-icon { transform:rotate(-22deg); }
 .stat-magic .magic-charge { position:absolute; bottom:4px; left:4px; font-size:clamp(9px,2.45vw,11px);
-  font-weight:800; line-height:1; color:#dbc2ff; font-variant-numeric:tabular-nums; }
+  font-weight:800; line-height:1; color:var(--magic-bright); font-variant-numeric:tabular-nums; }
 .stat-magic .attack-number { color:#fff5d9; }
 .stat-magic .cast-indicator { position:absolute; top:3px; right:4px; font-size:clamp(8px,2vw,10px);
   font-weight:900; letter-spacing:.05em; color:#fff2bc; display:none; }
-.stat-magic.ready { cursor:pointer; background:#493c53; border-color:#d5b4ff;
-  box-shadow:0 0 0 1px #d5b4ffaa,0 0 16px #ad85e9a8,inset 0 0 17px #e7bd6930;
+.stat-magic.ready { cursor:pointer; background:#3b304a; border-color:var(--magic-bright);
+  box-shadow:0 0 0 1px #caa0ffaa,0 0 16px #a56beba8,inset 0 0 17px #e7bd6930;
   animation:spatula-glow 1.9s ease-in-out infinite; }
 .stat-magic.ready .cast-indicator { display:block; }
 .stat-magic.ready .stat-icon { filter:drop-shadow(0 0 6px #ffe4a1); }
 .stat-magic.ready:focus-visible { outline:3px solid white; outline-offset:2px; }
 .stat-magic.ready:disabled { animation:none; cursor:wait; }
-@keyframes spatula-glow { 50% { box-shadow:0 0 0 2px #d5b4ffbb,0 0 23px #ad85e9bd,inset 0 0 19px #e7bd6945; } }
-.stat-magic.boosted .attack-number { color:#91f6c8; transform:scale(1.14); transform-origin:bottom right; }
+@keyframes spatula-glow { 50% { box-shadow:0 0 0 2px #caa0ffbb,0 0 23px #a56bebbd,inset 0 0 19px #e7bd6945; } }
+.stat-magic.boosted .attack-number { color:var(--mint); transform:scale(1.14); transform-origin:bottom right; }
 .stat-magic .attack-boost { position:absolute; top:3px; left:4px; font-size:clamp(8px,2.2vw,11px);
-  font-weight:900; color:#91f6c8; display:none; }
+  font-weight:900; color:var(--mint); display:none; }
 .stat-magic.boosted .attack-boost { display:block; }
-.stat-moves { --tile-border:#f07c48; }
-.stat-health { --tile-border:#e74e6a; }
-.stat-objective { --tile-border:#8b957d; background:#1a2d22; border-color:#586b59; }
+.stat-moves { --tile-border:var(--moves); }
+.stat-health { --tile-border:var(--health); }
+.stat-objective { --tile-border:#a4af9c; background:#203a31; border-color:#61796c; }
 .stat-objective .stat-icon { width:clamp(27px,8.5vw,43px); height:clamp(27px,8.5vw,43px);
-  margin-bottom:2px; opacity:.29; filter:grayscale(1) brightness(.75); }
+  margin-bottom:2px; opacity:.42; filter:grayscale(1) brightness(.85); }
 .stat-objective .objective-question { position:absolute; right:5px; bottom:3px; color:#b0b7a2;
   font-size:clamp(14px,4.2vw,20px); font-weight:900; }
-.stat-objective.collected { --tile-border:#d9b975; border-color:#d9b975; background:#344b31; }
+.stat-objective.collected { --tile-border:var(--gold); border-color:var(--gold); background:#344b31; }
 .stat-objective.collected .stat-icon { opacity:1; filter:drop-shadow(0 0 5px #f6e4a077); }
 .stat-objective.collected .objective-question { display:none; }
-.stat-objective.santa-collected { border-color:#d9535d; background:#3f3b2e; }
+.stat-objective.santa-collected { border-color:var(--health); background:#3f3b2e; }
 .stat-objective.santa-collected .stat-icon { filter:drop-shadow(0 0 5px #fff3d2aa); }
 .secondary-stats { display:flex; justify-content:space-between; gap:4px; align-items:center;
-  min-height:17px; font-size:clamp(10px,2.8vw,13px); color:#c2cfb8; white-space:nowrap; }
+  min-height:17px; font-size:clamp(10px,2.8vw,13px); color:var(--muted); white-space:nowrap; }
 .secondary-stats b { color:#f3e5c5; font-weight:900; }
 .secondary-stats .lumen-text { color:#b6e2df; }
-.secondary-stats .score-text { color:#e5bc70; }
+.secondary-stats .score-text { color:var(--gold); }
 @media(max-width:350px) {
   .stat-tile { border-width:1.5px; border-radius:6px; }
   .stat-icon { margin-bottom:9px; }
@@ -322,7 +334,7 @@ button { font: inherit; }
       <div class="primary-stats" aria-label="Health, moves, magic and objectives">
         <button id="spatula-button" class="stat-tile stat-magic" type="button" disabled aria-label="Magic spatula: 2 attack, 0 of 9 magic">
           <span class="stat-icon" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="23" y="5" width="19" height="30" rx="8" fill="#d6a76c" stroke="#f7e2b5" stroke-width="2.4"/>
+            <rect x="23" y="5" width="19" height="30" rx="8" fill="#c78a47" stroke="#f7e2b5" stroke-width="2.4"/>
             <path d="M29 11V26M36 11V26" stroke="#704d30" stroke-width="2.5" stroke-linecap="round"/>
             <path d="M30 33V55" stroke="#f7e2b5" stroke-width="7" stroke-linecap="round"/>
             <circle cx="30" cy="55" r="2" fill="#69452b"/>
@@ -334,20 +346,20 @@ button { font: inherit; }
         </button>
         <div class="stat-tile stat-moves" id="moves-tile" role="img" aria-label="60 moves">
           <span class="stat-icon" aria-hidden="true"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="32" cy="32" r="24" fill="#f4e5c8" stroke="#d7ae75" stroke-width="2"/>
-            <g fill="#d33d48">
+            <circle cx="32" cy="32" r="24" fill="#f2e8d2" stroke="#d7ae75" stroke-width="2"/>
+            <g fill="#d93450">
               <path d="M32 32C37 25 38 18 32 8C45 9 55 20 56 32C48 29 41 28 32 32Z"/>
               <path d="M32 32C37 25 38 18 32 8C45 9 55 20 56 32C48 29 41 28 32 32Z" transform="rotate(72 32 32)"/>
               <path d="M32 32C37 25 38 18 32 8C45 9 55 20 56 32C48 29 41 28 32 32Z" transform="rotate(144 32 32)"/>
               <path d="M32 32C37 25 38 18 32 8C45 9 55 20 56 32C48 29 41 28 32 32Z" transform="rotate(216 32 32)"/>
               <path d="M32 32C37 25 38 18 32 8C45 9 55 20 56 32C48 29 41 28 32 32Z" transform="rotate(288 32 32)"/>
-            </g><circle cx="32" cy="32" r="4" fill="#f4e5c8"/>
+            </g><circle cx="32" cy="32" r="4" fill="#f2e8d2"/>
           </svg></span>
           <span class="stat-number" id="move-count">60</span>
         </div>
         <div class="stat-tile stat-health" id="health-tile" role="img" aria-label="9 of 9 health">
           <span class="stat-icon" aria-hidden="true"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-            <path d="M32 55 9 31C-1 19 8 7 20 9c5 1 9 4 12 9 3-5 7-8 12-9 12-2 21 10 11 22L32 55Z" fill="#e84965" stroke="#ffd6dc" stroke-width="2.5" stroke-linejoin="round"/>
+            <path d="M32 55 9 31C-1 19 8 7 20 9c5 1 9 4 12 9 3-5 7-8 12-9 12-2 21 10 11 22L32 55Z" fill="#d93450" stroke="#ffd6dc" stroke-width="2.5" stroke-linejoin="round"/>
             <path d="M15 18c3-5 8-5 12-1" stroke="#ffadb8" stroke-width="3" stroke-linecap="round"/>
           </svg></span>
           <span class="stat-number" id="health-count">9/9</span>
@@ -390,7 +402,7 @@ button { font: inherit; }
       <div id="spell-panel" class="results hidden" role="dialog" aria-modal="true" aria-label="Choose a magic spatula spell"></div>
     </section>
 
-    <footer class="hud bottom-hud"><div id="version">web reset 3.9 • Mrs. Claus & the magic spatula</div></footer>
+    <footer class="hud bottom-hud"><div id="version">web reset 3.10 • Mrs. Claus & the magic spatula</div></footer>
   </main>
 
   <script>
@@ -402,19 +414,19 @@ const CONFIG = {
   ITEM_TYPES: ["food", "health", "monster", "gold", "bombs"],
   ITEM_LABEL: { food: "ϟ", health: "♥", monster: "✥", gold: "◉", bombs: "✦" },
   ITEM_COLOR: {
-    food: "#ff7137",
-    health: "#ec3d5c",
-    monster: "#20ddb1",
-    gold: "#e4b95d",
-    bombs: "#a47ae8",
+    food: "#e67a45",       // Moves / candy-cane orange
+    health: "#d93450",     // cranberry
+    monster: "#69dfa2",    // mint; summoning resource, not monster sprite
+    gold: "#f0b83f",       // antique gold
+    bombs: "#a56beb",     // purple Magic, intentionally preserved
   },
   DUNGEON_FLOOR: "floor",
   DUNGEON_WALL: "wall",
-  DUNGEON_FLOOR_COLOR: "#3c573d",
-  DUNGEON_WALL_COLOR: "#203d2b",
-  PLAYER_COLOR: "rgb(255,255,255)",
+  DUNGEON_FLOOR_COLOR: "#344d3c",
+  DUNGEON_WALL_COLOR: "#1d392f",
+  PLAYER_COLOR: "#f2e8d2",
   ENTRANCE_COLOR: "#9dbbb5",
-  EXIT_COLOR: "#e4b95d",
+  EXIT_COLOR: "#f0b83f",
   ENTRANCE_LABEL: "<",
   EXIT_LABEL: ">",
   STARTING_HP: 9,
@@ -675,7 +687,7 @@ function matchSummary(state) {
 }
 
 function runData(state) {
-  return {version:"3.9",outcome:state.gameWon ? "rescued" : state.gameOverReason || "in-progress",
+  return {version:"3.10",outcome:state.gameWon ? "rescued" : state.gameOverReason || "in-progress",
     stage:state.stage,alarmActive:state.alarmActive,keyDiscovered:state.keyDiscovered,lumenDiscovered:state.lumenDiscovered,health:state.hp,resources:{...state.resources},score:scoreBreakdown(state),
     matches:matchSummary(state),stats:state.stats};
 }
@@ -706,7 +718,7 @@ function downloadRunData(state) {
   const link=document.createElement("a");
   const stamp=new Date().toISOString().replace(/[:.]/g,"-");
   link.href=url;
-  link.download=`dungeon-match3-v3.7-${state.gameWon ? "rescued" : state.gameOverReason || "run"}-${stamp}.json`;
+  link.download=`dungeon-match3-v3.10-${state.gameWon ? "rescued" : state.gameOverReason || "run"}-${stamp}.json`;
   try {
     document.body.appendChild(link);
     link.click();
