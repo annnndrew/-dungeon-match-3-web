@@ -95,6 +95,10 @@ button { font: inherit; }
 }
 #help-dialog::backdrop { background: #000b; }
 #help-dialog p { text-align: left; font-size: 14px; line-height: 1.5; }
+#help-dialog button + button, #help-dialog form { margin-top: 6px; }
+.icon-guide { display: grid; grid-template-columns: 2.6em 1fr; gap: 7px 8px; text-align: left; font-size: 13px; }
+.icon-guide dt { display: grid; place-items: center; font-size: 16px; font-weight: 700; }
+.icon-guide dd { margin: 0; }
 
 #board-wrap { position: relative; width: 100%; }
 #board {
@@ -171,21 +175,20 @@ button { font: inherit; }
   from { transform: translate(var(--monster-from-x),var(--monster-from-y)); }
   to { transform: translate(0,0); }
 }
-.tile .marker {
-  position: absolute;
-  top: 2px;
-  font-size: clamp(9px, 2.7vw, 12px);
-  line-height: 1;
-  font-weight: 700;
-  pointer-events: none;
+.stairs {
+  display: inline-block;
+  width: 1.3em;
+  height: 1em;
+  background: currentColor;
+  clip-path: polygon(4% 78%, 24% 78%, 24% 53%, 46% 53%, 46% 29%, 68% 29%, 68% 5%,
+    96% 5%, 96% 25%, 82% 25%, 82% 49%, 60% 49%, 60% 73%, 38% 73%, 38% 98%, 4% 98%);
 }
-.tile .marker.entrance { left: 4px; color: rgb(145,185,195); }
+.stairs-up { color: #b4d7ce; }
+.stairs-down { color: var(--gold); transform: scaleX(-1); }
+.tile .stairs { position: absolute; width: 65%; height: 50%; pointer-events: none; }
 .tile.entrance-tile { background: #284a41; border: 1px solid #9abdb3; }
-.tile.entrance-tile .marker.entrance { left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: clamp(16px, 5vw, 26px); }
-.tile.entrance-tile.hero .marker.entrance { opacity: .45; }
 .tile.exit-tile { background: #4a432b; border: 1px solid var(--gold); }
-.tile.exit-tile .marker.exit { right: 50%; top: 50%; transform: translate(50%, -50%); font-size: clamp(16px, 5vw, 26px); }
-.tile.exit-tile.hero .marker.exit { opacity: .45; }
+.tile.hero .stairs { opacity: .45; }
 /* A subtle heat map replaces threat outlines. Each adjacent monster adds
    another 20%-opacity red layer: 1 = 20%, 2 = 36%, 3 = 48.8%, etc.
    Tint is painted behind resources, markers, and sprites for readability. */
@@ -200,7 +203,6 @@ button { font: inherit; }
 }
 .tile.recent-hit .hero-mark { animation: hero-hit .34s ease-out; }
 @keyframes hero-hit { 0%, 55% { color: #ff5151; transform:scale(1.3); } 100% { color:#fff; transform:scale(1); } }
-.tile .marker.exit { right: 4px; color: rgb(225,205,120); }
 .tile.hero .resource { visibility: hidden; }
 .tile .hero-mark {
   position:absolute; inset:0;
@@ -245,6 +247,7 @@ button { font: inherit; }
 }
 #flash.invalid { background: rgba(105,65,80,.45); animation: flash 130ms ease-out; }
 #flash.blocked { background: rgba(70,95,115,.60); animation: flash 160ms ease-out; }
+#flash.enemy-hit { background: #bd203d55; animation: flash 180ms ease-out; }
 #flash.starving { background: rgba(200,30,30,.62); animation: flash 180ms ease-out; }
 @keyframes flash { from { opacity: 1; } to { opacity: 0; } }
 
@@ -271,6 +274,7 @@ button { font: inherit; }
   overflow-y: auto;
 }
 .results-panel h2 { margin: 0 0 8px; font-size: 26px; }
+.result-cause { margin: 4px 0 12px; font-size: 13px; color: var(--muted); }
 .results-panel .score { font-size: 21px; margin-bottom: 14px; }
 .escape-bonus { color: var(--gold); font-size: 12px; margin-top: 5px; }
 .results-list { display: grid; gap: 5px; text-align: left; margin: 0 auto 16px; width: fit-content; }
@@ -306,6 +310,8 @@ button { font: inherit; }
   color:var(--tile-border); padding:4px; overflow:hidden; }
 .stat-icon { width:clamp(31px,9.6vw,48px); height:clamp(31px,9.6vw,48px); display:block; flex:none;
   margin-bottom:10px; filter:drop-shadow(0 1px 1px #07120a); }
+.match-glyph { font-weight: 700; }
+.stat-icon.match-glyph { display: grid; place-items: center; font-size: clamp(25px, 8vw, 42px); line-height: 1; }
 .stat-icon svg { display:block; width:100%; height:100%; }
 .stat-tile .stat-number { position:absolute; bottom:3px; right:5px; font-size:clamp(12px,3.8vw,17px);
   line-height:1; font-weight:900; font-variant-numeric:tabular-nums; color:#fff1d9;
@@ -320,13 +326,18 @@ button { font: inherit; }
 .stat-magic .cast-indicator { position:absolute; top:3px; right:4px; font-size:clamp(8px,2vw,10px);
   font-weight:900; letter-spacing:.05em; color:#fff2bc; display:none; }
 .stat-magic.ready { cursor:pointer; background:#3b304a; border-color:var(--magic-bright);
-  box-shadow:0 0 0 1px #caa0ffaa,0 0 16px #a56beba8,inset 0 0 17px #e7bd6930;
-  animation:spatula-glow 1.9s ease-in-out infinite; }
+  box-shadow:0 0 8px #a56beb65;
+  animation:spatula-pulse 2.4s ease-in-out infinite; }
 .stat-magic.ready .cast-indicator { display:block; }
 .stat-magic.ready .stat-icon { filter:drop-shadow(0 0 6px #ffe4a1); }
 .stat-magic.ready:focus-visible { outline:3px solid white; outline-offset:2px; }
 .stat-magic.ready:disabled { animation:none; cursor:wait; }
-@keyframes spatula-glow { 50% { box-shadow:0 0 0 2px #caa0ffbb,0 0 23px #a56bebbd,inset 0 0 19px #e7bd6945; } }
+@keyframes spatula-pulse {
+  50% { transform:scale(1.025); box-shadow:0 0 13px #a56bebaa; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stat-magic.ready { animation:none; }
+}
 .stat-magic.boosted .attack-number { color:var(--mint); transform:scale(1.14); transform-origin:bottom right; }
 .stat-magic .attack-boost { position:absolute; top:3px; left:4px; font-size:clamp(8px,2.2vw,11px);
   font-weight:900; color:var(--mint); display:none; }
@@ -365,7 +376,7 @@ button { font: inherit; }
 <body>
   <main id="app">
     <header class="hud top-hud">
-      <div class="game-title"><span>MRS. CLAUS'S</span><span>GINGERBREAD DUNGEON MATCH 3</span></div>
+      <div class="game-title"><span>MRS. CLAUS'S</span><span>Dungeon Match</span></div>
       <div class="header-actions">
         <button id="show-help" type="button" aria-label="How to play" aria-haspopup="dialog">?</button>
         <button id="new-game" type="button">New game</button>
@@ -382,27 +393,15 @@ button { font: inherit; }
           </svg></span>
           <span class="cast-indicator" aria-hidden="true">CAST</span>
           <span class="attack-boost" id="attack-boost" aria-hidden="true">+0</span>
-          <span class="magic-charge" id="magic-count">✦ 0/9</span>
+          <span class="magic-charge"><span data-resource="bombs" aria-hidden="true">✦</span> <span id="magic-count">0/9</span></span>
           <span class="stat-number attack-number"><span id="attack-count">2</span> <small>ATK</small></span>
         </button>
         <div class="stat-tile stat-moves" id="moves-tile" role="img" aria-label="60 moves">
-          <span class="stat-icon" aria-hidden="true"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="32" cy="32" r="24" fill="#f2e8d2" stroke="#d7ae75" stroke-width="2"/>
-            <g fill="#d93450">
-              <path d="M32 32C37 25 38 18 32 8C45 9 55 20 56 32C48 29 41 28 32 32Z"/>
-              <path d="M32 32C37 25 38 18 32 8C45 9 55 20 56 32C48 29 41 28 32 32Z" transform="rotate(72 32 32)"/>
-              <path d="M32 32C37 25 38 18 32 8C45 9 55 20 56 32C48 29 41 28 32 32Z" transform="rotate(144 32 32)"/>
-              <path d="M32 32C37 25 38 18 32 8C45 9 55 20 56 32C48 29 41 28 32 32Z" transform="rotate(216 32 32)"/>
-              <path d="M32 32C37 25 38 18 32 8C45 9 55 20 56 32C48 29 41 28 32 32Z" transform="rotate(288 32 32)"/>
-            </g><circle cx="32" cy="32" r="4" fill="#f2e8d2"/>
-          </svg></span>
+          <span class="stat-icon match-glyph" data-resource="food" aria-hidden="true"></span>
           <span class="stat-number" id="move-count">60</span>
         </div>
         <div class="stat-tile stat-health" id="health-tile" role="img" aria-label="9 of 9 health">
-          <span class="stat-icon" aria-hidden="true"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-            <path d="M32 55 9 31C-1 19 8 7 20 9c5 1 9 4 12 9 3-5 7-8 12-9 12-2 21 10 11 22L32 55Z" fill="#d93450" stroke="#ffd6dc" stroke-width="2.5" stroke-linejoin="round"/>
-            <path d="M15 18c3-5 8-5 12-1" stroke="#ffadb8" stroke-width="3" stroke-linecap="round"/>
-          </svg></span>
+          <span class="stat-icon match-glyph" data-resource="health" aria-hidden="true"></span>
           <span class="stat-number" id="health-count">9/9</span>
         </div>
         <div class="stat-tile stat-objective" id="key-tile" role="img" aria-label="Key not collected">
@@ -443,13 +442,32 @@ button { font: inherit; }
       <div id="spell-panel" class="results hidden" role="dialog" aria-modal="true" aria-label="Choose a magic spatula spell"></div>
     </section>
 
-    <footer class="hud bottom-hud"><div id="version">Reset 4.0 layout preview • Mrs. Claus & the magic spatula</div></footer>
+    <footer class="hud bottom-hud"><div id="version">Reset 4.0 • Mrs. Claus & the magic spatula</div></footer>
   </main>
   <dialog id="help-dialog" class="results-panel" aria-labelledby="help-title">
-    <h2 id="help-title">How to play</h2>
-    <p>Swipe from a tile toward a neighbor to swap resources. Match three or more in a row or column. A successful match moves your hero in the swipe direction, or attacks if a monster is in the way.</p>
-    <p>Find the key and reach the exit. On the final level, rescue Santa and bring him to the exit. The key and Santa are revealed from one tile away. Red tiles warn of damage on your next move.</p>
-    <p>When the spatula reaches 9/9 Magic, tap it to choose a spell.</p>
+    <h2 id="help-title" tabindex="-1">How to play</h2>
+    <section id="help-rules">
+      <p>Swipe from a tile toward a neighbor to swap resources. Match three or more in a row or column. A successful match moves your hero in the swipe direction, or attacks if a monster is in the way.</p>
+      <p>Find the key and reach the exit. On the final level, rescue Santa and bring him to the exit. The key and Santa are revealed from one tile away. Red tiles warn of damage on your next move.</p>
+      <p>When the spatula reaches 9/9 Magic, tap it to choose a spell.</p>
+      <button id="show-icon-guide" type="button">Resources &amp; icons →</button>
+    </section>
+    <section id="help-icons" hidden>
+      <dl class="icon-guide">
+        <dt><span data-resource="food" aria-hidden="true"></span></dt><dd><strong>Moves.</strong> Refill your move supply. Every successful swipe spends one Move.</dd>
+        <dt><span data-resource="health" aria-hidden="true"></span></dt><dd><strong>Health.</strong> Recover lost health, up to 9.</dd>
+        <dt><span data-resource="bombs" aria-hidden="true"></span></dt><dd><strong>Magic.</strong> Charge the spatula. Tap it at 9/9 to pick a spell.</dd>
+        <dt><span data-resource="gold" aria-hidden="true"></span></dt><dd><strong>Gold.</strong> Collect coins. Game Over lists the gold you matched.</dd>
+        <dt><span data-resource="monster" aria-hidden="true"></span></dt><dd><strong>Summoning.</strong> Every two summon points bring another monster into the dungeon.</dd>
+        <dt aria-hidden="true">@</dt><dd><strong>Hero.</strong> Your position on the board.</dd>
+        <dt aria-hidden="true">2</dt><dd><strong>Monster.</strong> The number shows its remaining health.</dd>
+        <dt aria-hidden="true">K / S</dt><dd><strong>Key / Santa.</strong> Collect the objective before taking the exit.</dd>
+        <dt aria-hidden="true">◇</dt><dd><strong>Lumenstone.</strong> Optional score bonus after it's revealed.</dd>
+        <dt><span class="stairs stairs-up" aria-hidden="true"></span></dt><dd><strong>Upstairs.</strong> The entrance where you start the level.</dd>
+        <dt><span class="stairs stairs-down" aria-hidden="true"></span></dt><dd><strong>Downstairs.</strong> The exit to the next level, or out of the dungeon on level 3.</dd>
+      </dl>
+      <button id="show-help-rules" type="button">← How to play</button>
+    </section>
     <form method="dialog"><button type="submit">Back to game</button></form>
   </dialog>
 
@@ -475,8 +493,6 @@ const CONFIG = {
   PLAYER_COLOR: "#f2e8d2",
   ENTRANCE_COLOR: "#9dbbb5",
   EXIT_COLOR: "#f0b83f",
-  ENTRANCE_LABEL: "<",
-  EXIT_LABEL: ">",
   STARTING_HP: 9,
   MAX_HP: 9,
   STARTING_FOOD: 60,
@@ -735,7 +751,7 @@ function matchSummary(state) {
 }
 
 function runData(state) {
-  return {version:"3.10",outcome:state.gameWon ? "rescued" : state.gameOverReason || "in-progress",
+  return {version:"4.0",outcome:state.gameWon ? "rescued" : state.gameOverReason || "in-progress",
     stage:state.stage,alarmActive:state.alarmActive,keyDiscovered:state.keyDiscovered,lumenDiscovered:state.lumenDiscovered,health:state.hp,resources:{...state.resources},score:scoreBreakdown(state),
     matches:matchSummary(state),stats:state.stats};
 }
@@ -766,7 +782,7 @@ function downloadRunData(state) {
   const link=document.createElement("a");
   const stamp=new Date().toISOString().replace(/[:.]/g,"-");
   link.href=url;
-  link.download=`dungeon-match3-v3.10-${state.gameWon ? "rescued" : state.gameOverReason || "run"}-${stamp}.json`;
+  link.download=`dungeon-match3-v4.0-${state.gameWon ? "rescued" : state.gameOverReason || "run"}-${stamp}.json`;
   try {
     document.body.appendChild(link);
     link.click();
@@ -1128,6 +1144,7 @@ function resolveProximityDamage(state, damagedThisTurn = new Set(), {eligible=nu
     state.stats.damageTaken+=lost;
     if(chase)state.stats.chaseDamageTaken+=lost;
     damage+=lost;
+    if (!state.hp) state.defeatedBy = monsterType(monster).name;
   }
   state.lastProximityDamage+=damage;
   if (!state.hp) { state.gameOver=true; state.gameOverReason="death"; }
@@ -1184,7 +1201,7 @@ const SPELLS = {
   freeze:{name:"Deep Freeze",description:"Freeze monsters within 2 tiles for 2 turns. Walls block the spell."},
   heal:{name:"Christmas Cookies",description:"Restore your health to 9."},
   teleport:{name:"Chimney Hop",description:"Teleport to a random empty floor tile. Your turn continues there."},
-  shuffle:{name:"Stir the Pot",description:"Reshuffle resources. Characters, walls and objectives stay put."},
+  shuffle:{name:"Stir the Pot",description:"Reshuffle the board and collect any matches it creates."},
   map:{name:"Reveal Map",description:"Reveal the key or Santa and the lumenstone on this stage."},
 };
 
@@ -1205,32 +1222,26 @@ function pauseOrContinue(state,context,rng) {
   return completeTurn(state);
 }
 
-function shuffleResources(state,rng) {
-  const original=state.itemGrid.map(row=>[...row]);
-  const blocked=new Set(occupiedCells(state).map(coordKey));
-  const cells=[];
-  for(let r=0;r<CONFIG.BOARD_ROWS;r++)for(let c=0;c<CONFIG.BOARD_COLS;c++)
-    if(original[r][c]!=null && !blocked.has(`${r},${c}`))cells.push([r,c]);
-  const values=cells.map(([r,c])=>original[r][c]);
-  for(let attempt=0;attempt<1000;attempt++) {
-    const shuffled=[...values];
-    for(let i=shuffled.length-1;i>0;i--) {
-      const j=Math.floor(rng()*(i+1));[shuffled[i],shuffled[j]]=[shuffled[j],shuffled[i]];
-    }
-    state.itemGrid=original.map(row=>[...row]);
-    cells.forEach(([r,c],i)=>{state.itemGrid[r][c]=shuffled[i];});
-    if(!findMatchRuns(buildMatchBoard(state)).length && hasLegalMatchMove(state)) {
-      state.stats.boardResets++;return true;
+function shuffleResources(state, rng) {
+  const blocked = new Set(occupiedCells(state).map(coordKey));
+  const cells = [];
+  for (let r = 0; r < CONFIG.BOARD_ROWS; r++) {
+    for (let c = 0; c < CONFIG.BOARD_COLS; c++) {
+      if (state.itemGrid[r][c] != null && !blocked.has(coordKey([r, c]))) cells.push([r, c]);
     }
   }
-  state.itemGrid=original;
-  return false;
+  const values = cells.map(([r, c]) => state.itemGrid[r][c]);
+  for (let i = values.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [values[i], values[j]] = [values[j], values[i]];
+  }
+  cells.forEach(([r, c], i) => { state.itemGrid[r][c] = values[i]; });
+  state.stats.boardResets++;
 }
 
-function chooseSpell(state,id) {
-  if(!state.spellOffer || state.gameOver || state.gameWon ||
-      (id!=="pass" && !state.spellOffer.includes(id)))return false;
-  const rng=defaultRng;
+function chooseSpell(state, id, rng = defaultRng) {
+  if (!state.spellOffer || state.gameOver || state.gameWon ||
+      (id !== "pass" && !state.spellOffer.includes(id))) return false;
   state.spellOffer=null;state.spellPanelHidden=false;
   state.magicReady=false;state.resources.bombs=0;
   state.animationEvents=[];state.animationHeroFrom=[state.playerRow,state.playerCol];
@@ -1252,7 +1263,11 @@ function chooseSpell(state,id) {
       if(!state.hasKey)state.keyDiscovered=true;
       if(state.lumenPos)state.lumenDiscovered=true;
     } else if(id==="shuffle") {
-      if(!shuffleResources(state,rng))state.lastEvent="NO SAFE RESHUFFLE FOUND — BOARD KEPT";
+      shuffleResources(state, rng);
+      state.lastFallCells = new Set();
+      state.animationEvents.push({type: "shuffle", after: snapshotBoard(state)});
+      resolveAllMatches(state, rng, {source: "spell"});
+      endIfNoMoves(state);
     } else if(id==="teleport") {
       const spots=[];
       for(let r=0;r<CONFIG.BOARD_ROWS;r++)for(let c=0;c<CONFIG.BOARD_COLS;c++) {
@@ -1461,6 +1476,7 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null, stag
     gameOver: false,
     gameWon: false,
     gameOverReason: "",
+    defeatedBy: "",
     lastMoveStarved: false,
     lastMoveBlocked: false,
     lastEvent: "",
@@ -1621,9 +1637,11 @@ function resolveHeroAction(state,{direction,turnCascadeBonus,skipHeroAction=fals
     state.stats.damageDealt += effectiveDamage;
     state.stats.cascadeDamageDealt += effectiveCascadeDamage;
     if (bonus > 0) state.stats.cascadePoweredAttacks++;
-    state.stats.damageTaken+=Math.min(state.hp,retaliation);
+    const retaliationDamage = Math.min(state.hp, retaliation);
+    state.stats.damageTaken += retaliationDamage;
     state.hp = Math.max(0, state.hp - retaliation);
     state.lastAttackDamage = retaliation;
+    if (!state.hp) state.defeatedBy = monsterType(defender).name;
     if (retaliation) damagedThisTurn.add(defender); // No second attack or move this turn.
     if (defender.hp <= 0) {
       state.stats.monstersKilled++;
@@ -1637,7 +1655,7 @@ function resolveHeroAction(state,{direction,turnCascadeBonus,skipHeroAction=fals
     }
     state.animationEvents.push({
       type: "attack", before: beforeAttack, after: snapshotBoard(state),
-      target: [destRow, destCol], bonus, damage: effectiveDamage,
+      target: [destRow, destCol], bonus, damage: effectiveDamage, retaliationDamage,
       killed: defender.hp <= 0,
     });
   } else {
@@ -1798,7 +1816,7 @@ function statusText() {
   if (isThreatened(game, game.playerRow, game.playerCol))
     return `⚠ Adjacent enemies: −${adjacentMonsterCount(game, game.playerRow, game.playerCol)} ♥ on next move`;
   if (game.alarmActive) return game.stage===CONFIG.STAGE_COUNT
-    ? "ALARM — Santa is with you — reach exit >!" : "ALARM — all monsters hunting — reach exit >!";
+    ? "ALARM — Santa is with you — reach the stairs!" : "ALARM — all monsters hunting — reach the stairs!";
   const objective=game.stage===CONFIG.STAGE_COUNT ? "Santa" : "the key";
   return game.keyDiscovered ? `${objective} spotted — collect ${game.stage===CONFIG.STAGE_COUNT ? "S" : "K"}!`
     : `Search the rooms for ${objective}.`;
@@ -1810,6 +1828,15 @@ function resultsTitle() {
   if (game.gameOverReason === "starvation") return "OUT OF MOVES";
   if (game.gameOverReason === "no_moves") return "NO MOVES";
   return "GAME OVER";
+}
+
+function gameOverCause(state) {
+  switch (state.gameOverReason) {
+    case "death": return state.defeatedBy ? `Killed by a ${state.defeatedBy}.` : "Killed by enemy damage.";
+    case "starvation": return "You ran out of Moves.";
+    case "no_moves": return "No legal swaps could make a match.";
+    default: return "";
+  }
 }
 
 function renderResults() {
@@ -1826,9 +1853,11 @@ function renderResults() {
     const displayName = { food: "Moves", health: "Health", monster: "Summons", gold: "Gold", bombs: "Magic" }[kind];
     return `<div><span style="color:${color};font-weight:700">${label}</span> ${displayName}: ${amount}</div>`;
   }).join("");
+  const cause = gameOverCause(game);
   resultsEl.innerHTML = `
     <div class="results-panel">
       <h2>${resultsTitle()}</h2>
+      ${cause ? `<p class="result-cause">${cause}</p>` : ""}
       <div class="score">SCORE: ${game.score}</div>
       <button id="copy-results" type="button">Copy Summary</button>
       <button id="export-results" type="button" style="margin:6px 0 12px">Export Full Data</button>
@@ -1903,7 +1932,10 @@ function renderSpellChoice() {
   const cast=id=>{
     if(animating || !game.spellOffer)return;
     pointerStart=null;spellPanelEl.classList.add("hidden");returnSpellsBtn.hidden=true;
-    if(chooseSpell(game,id)) { render(); renderSpellChoice(); }
+    if (chooseSpell(game, id)) {
+      if (id === "shuffle") void playCascadeAnimation(game.animationEvents);
+      else { render(); renderSpellChoice(); }
+    }
   };
   for(const id of game.spellOffer)spellPanelEl.querySelector(`[data-spell="${id}"]`).addEventListener("click",()=>cast(id));
   spellPanelEl.querySelector("#pass-spell").addEventListener("click",()=>cast("pass"));
@@ -1929,7 +1961,7 @@ function renderHud() {
   movesTileEl.setAttribute("aria-label", `${game.resources.food} moves remaining`);
   healthCountEl.textContent = `${game.hp}/${CONFIG.MAX_HP}`;
   healthTileEl.setAttribute("aria-label", `${game.hp} of ${CONFIG.MAX_HP} health`);
-  magicCountEl.textContent = `✦ ${game.resources.bombs}/${CONFIG.MAGIC_THRESHOLD}`;
+  magicCountEl.textContent = `${game.resources.bombs}/${CONFIG.MAGIC_THRESHOLD}`;
   spatulaBtn.classList.toggle("ready", game.magicReady && !game.gameOver && !game.gameWon);
   spatulaBtn.disabled = !game.magicReady || game.gameOver || game.gameWon || animating || !!game.spellOffer;
   setAttackDisplay(0);
@@ -1944,6 +1976,11 @@ function renderHud() {
   levelCountEl.textContent = `${game.stage}/${CONFIG.STAGE_COUNT}`;
   lumenCountEl.textContent = `${game.stats.lumenCollected}/${CONFIG.STAGE_COUNT}`;
   scoreCountEl.textContent = game.score;
+}
+
+function paintResourceIcon(element, item) {
+  element.textContent = CONFIG.ITEM_LABEL[item];
+  element.style.color = CONFIG.ITEM_COLOR[item];
 }
 
 function renderBoard(view = game, { matched = null, dropDistances = null,
@@ -1998,24 +2035,19 @@ function renderBoard(view = game, { matched = null, dropDistances = null,
           resource.classList.add("falling");
           resource.style.setProperty("--drop-px", `${dropDistances[cellKey]*(tileSize+3)}px`);
         }
-        resource.textContent = CONFIG.ITEM_LABEL[item];
-        resource.style.color = CONFIG.ITEM_COLOR[item];
+        paintResourceIcon(resource, item);
         tile.appendChild(resource);
       }
 
-      if (row === view.dungeon.entrancePos[0] && col === view.dungeon.entrancePos[1]) {
-        tile.classList.add("entrance-tile");
-        const marker = document.createElement("span");
-        marker.className = "marker entrance";
-        marker.textContent = CONFIG.ENTRANCE_LABEL;
-        tile.appendChild(marker);
-      }
-      if (row === view.dungeon.exitPos[0] && col === view.dungeon.exitPos[1]) {
-        tile.classList.add("exit-tile");
-        const marker = document.createElement("span");
-        marker.className = "marker exit";
-        marker.textContent = CONFIG.EXIT_LABEL;
-        tile.appendChild(marker);
+      const isEntrance = row === view.dungeon.entrancePos[0] && col === view.dungeon.entrancePos[1];
+      const isExit = row === view.dungeon.exitPos[0] && col === view.dungeon.exitPos[1];
+      if (isEntrance || isExit) {
+        tile.classList.add(isEntrance ? "entrance-tile" : "exit-tile");
+        tile.setAttribute("aria-label", isEntrance ? "Entrance staircase" : "Exit staircase");
+        const stairs = document.createElement("span");
+        stairs.className = isEntrance ? "stairs stairs-up" : "stairs stairs-down";
+        stairs.setAttribute("aria-hidden", "true");
+        tile.appendChild(stairs);
       }
       if (keyIsVisible(view,row,col)) {
         tile.classList.add("key-tile");
@@ -2111,8 +2143,8 @@ function showHeroBonusPopup(bonus) {
   matchFxEl.appendChild(pop);
 }
 
-async function playCascadeAnimation(events) {
-  if (!events.length) { render();renderSpellChoice(); return; }
+async function playCascadeAnimation(events, damageTaken = 0) {
+  if (!events.length && !damageTaken) { render(); renderSpellChoice(); return; }
   const token = ++animationToken;
   animating = true;
   const isActive = () => token === animationToken;
@@ -2129,11 +2161,18 @@ async function playCascadeAnimation(events) {
     if (!isActive()) return;
     matchFxEl.replaceChildren();
     renderBoard(viewFor(frame.after), { dropDistances: frame.dropDistances });
-    if(frame.source === "swap")setAttackDisplay(Math.max(0,frame.wave - 1));
+    if (attackEvent && frame.source === "swap") setAttackDisplay(Math.max(0, frame.wave - 1));
     await wait(460);
   }
 
-  if (attackEvent) {
+  if (events[0]?.type === "shuffle") {
+    renderBoard(events[0].after);
+    await wait(200);
+    for (const frame of events.slice(1)) {
+      if (!isActive()) return;
+      await playMatchFrame(frame);
+    }
+  } else if (attackEvent) {
     // Crucial: the hero stays at the origin throughout the attack's
     // waterfall. Resolve the attack after its triggering cascades, then
     // animate movement into the target only when the enemy was defeated.
@@ -2155,6 +2194,7 @@ async function playCascadeAnimation(events) {
     await wait(230);
     if (!isActive()) return;
     setAttackDisplay(0); // Cascade power was just spent on this attack.
+    if (attackEvent.retaliationDamage) flash("enemy-hit");
     renderBoard(attackEvent.after, {
       heroFrom: attackEvent.killed
         ? [attackEvent.before.playerRow,attackEvent.before.playerCol] : null,
@@ -2205,17 +2245,15 @@ async function playCascadeAnimation(events) {
       });
       firstFrame = false;
     }
-    if (!isActive()) return;
-    // Show cascade power once, over the hero, then discard it.
-    // It is NOT saved for an attack on a later turn.
-    if (game.lastCascadeBonus > 0) {
-      showHeroBonusPopup(game.lastCascadeBonus);
-      await wait(390);
-      if (!isActive()) return;
-      matchFxEl.replaceChildren();
-    }
   }
   if (!isActive()) return;
+  if (damageTaken > (attackEvent?.retaliationDamage ?? 0)) {
+    flash("enemy-hit");
+    if (game.gameOver) {
+      await wait(180);
+      if (!isActive()) return;
+    }
+  }
   matchFxEl.replaceChildren();
   animating = false;
   render();
@@ -2262,7 +2300,7 @@ boardEl.addEventListener("pointerup", (event) => {
   if (moved && game.lastMoveStarved) flash("starving");
   else if (!moved && game.lastMoveBlocked) flash("blocked");
   else if (!moved) flash("invalid");
-  if (moved) void playCascadeAnimation(game.animationEvents);
+  if (moved) void playCascadeAnimation(game.animationEvents, game.stats.turnLog.at(-1).damageTaken);
   else render();
 });
 
@@ -2270,7 +2308,27 @@ boardEl.addEventListener("pointercancel", () => { pointerStart = null; });
 boardEl.addEventListener("contextmenu", (event) => event.preventDefault());
 newGameBtn.addEventListener("click", resetGame);
 const helpDialog = document.querySelector("#help-dialog");
-document.querySelector("#show-help").addEventListener("click", () => helpDialog.showModal());
+const helpTitle = document.querySelector("#help-title");
+const helpRules = document.querySelector("#help-rules");
+const helpIcons = document.querySelector("#help-icons");
+
+function showHelpPage(showIcons) {
+  helpTitle.textContent = showIcons ? "Resources & icons" : "How to play";
+  helpRules.hidden = showIcons;
+  helpIcons.hidden = !showIcons;
+  helpTitle.focus();
+  helpDialog.scrollTop = 0;
+}
+
+document.querySelector("#show-help").addEventListener("click", () => {
+  helpDialog.showModal();
+  showHelpPage(false);
+});
+document.querySelector("#show-icon-guide").addEventListener("click", () => showHelpPage(true));
+document.querySelector("#show-help-rules").addEventListener("click", () => showHelpPage(false));
+for (const icon of document.querySelectorAll("[data-resource]")) {
+  paintResourceIcon(icon, icon.dataset.resource);
+}
 returnSpellsBtn.addEventListener("click",()=>{game.spellPanelHidden=false;renderSpellChoice();});
 spatulaBtn.addEventListener("click",()=>{
   if(animating || !game || !activateSpatula(game))return;
