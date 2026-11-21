@@ -6,7 +6,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="theme-color" content="#102f29" />
-  <title>Mrs. Claus's Gingerbread Dungeon Match 3</title>
+  <title>Mrs. Claus’s Roguelike MATCH THREE</title>
   <style>
 #spell-panel { z-index:25; }
 #spell-panel button { margin:5px 0; }
@@ -89,11 +89,13 @@ button { font: inherit; }
   padding: 6px 8px;
   white-space: nowrap;
 }
+.restart-actions { display: grid; gap: 8px; }
+#restart-dialog,
 #help-dialog {
   width: min(calc(100% - 32px), 330px);
   color: var(--text);
 }
-#help-dialog::backdrop { background: #000b; }
+#restart-dialog::backdrop, #help-dialog::backdrop { background: #000b; }
 #help-dialog p { text-align: left; font-size: 14px; line-height: 1.5; }
 #help-dialog button + button, #help-dialog form { margin-top: 6px; }
 .icon-guide { display: grid; grid-template-columns: 2.6em 1fr; gap: 7px 8px; text-align: left; font-size: 13px; }
@@ -185,10 +187,66 @@ button { font: inherit; }
 }
 .stairs-up { color: #b4d7ce; }
 .stairs-down { color: var(--gold); transform: scaleX(-1); }
-.tile .stairs { position: absolute; width: 65%; height: 50%; pointer-events: none; }
+.door, .present-icon {
+  display: inline-block;
+  position: relative;
+  width: .78em;
+  height: 1em;
+}
+.door {
+  color: inherit;
+  border: 1px solid currentColor;
+  border-radius: 50% 50% 2px 2px / 28% 28% 2px 2px;
+  background: #3a2b24;
+}
+.door::after {
+  content: "";
+  position: absolute;
+  right: 17%;
+  top: 53%;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.present-icon {
+  height: .72em;
+  width: .93em;
+  border: 1px solid #f0cf8c;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent 39%, #f0cf8c 39% 61%, transparent 61%),
+    linear-gradient(0deg, #ab354b 64%, #f0cf8c 64% 77%, #ab354b 77%);
+}
+.present-icon::before {
+  content: "";
+  position: absolute;
+  left: 20%;
+  right: 20%;
+  top: -.22em;
+  height: .23em;
+  border: 1px solid #f0cf8c;
+  border-radius: 4px 4px 1px 1px;
+}
+.tile .passage-mark {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  justify-items: center;
+  grid-template-rows: 1fr auto;
+  align-items: center;
+  padding-bottom: 2px;
+  font-size: clamp(13px, 4vw, 21px);
+  line-height: 1;
+  pointer-events: none;
+  z-index: 2;
+}
+.tile.entrance-tile .passage-mark { color: #b4d7ce; }
+.tile.exit-tile .passage-mark { color: var(--gold); }
+.passage-mark small { font-size: clamp(6px, 1.75vw, 9px); font-weight: 800; text-transform: uppercase; }
 .tile.entrance-tile { background: #284a41; border: 1px solid #9abdb3; }
 .tile.exit-tile { background: #4a432b; border: 1px solid var(--gold); }
-.tile.hero .stairs { opacity: .45; }
+.tile.hero .passage-mark > span { opacity: .35; }
+.tile.hero:is(.entrance-tile,.exit-tile) .hero-mark { padding-bottom: 8px; font-size: clamp(20px, 6.5vw, 33px); }
 /* A subtle heat map replaces threat outlines. Each adjacent monster adds
    another 20%-opacity red layer: 1 = 20%, 2 = 36%, 3 = 48.8%, etc.
    Tint is painted behind resources, markers, and sprites for readability. */
@@ -319,7 +377,6 @@ button { font: inherit; }
 .stat-tile .stat-number small { font-size:.61em; font-weight:700; color:var(--tile-border); }
 .stat-magic { --tile-border:var(--magic); width:100%; cursor:default; appearance:none; font:inherit; }
 .stat-magic:disabled { opacity:1; }
-.stat-magic .stat-icon { transform:rotate(-22deg); }
 .stat-magic .magic-charge { position:absolute; bottom:4px; left:4px; font-size:clamp(9px,2.45vw,11px);
   font-weight:800; line-height:1; color:var(--magic-bright); font-variant-numeric:tabular-nums; }
 .stat-magic .attack-number { color:#fff5d9; }
@@ -376,7 +433,7 @@ button { font: inherit; }
 <body>
   <main id="app">
     <header class="hud top-hud">
-      <div class="game-title"><span>MRS. CLAUS'S</span><span>Dungeon Match</span></div>
+      <div class="game-title"><span>Mrs. Claus’s Roguelike</span><span>MATCH THREE</span></div>
       <div class="header-actions">
         <button id="show-help" type="button" aria-label="How to play" aria-haspopup="dialog">?</button>
         <button id="new-game" type="button">New game</button>
@@ -384,21 +441,16 @@ button { font: inherit; }
     </header>
     <div class="hud stats-hud">
       <div class="primary-stats" aria-label="Health, moves, magic and objectives">
-        <button id="spatula-button" class="stat-tile stat-magic" type="button" disabled aria-label="Magic spatula: 2 attack, 0 of 9 magic">
-          <span class="stat-icon" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="23" y="5" width="19" height="30" rx="8" fill="#c78a47" stroke="#f7e2b5" stroke-width="2.4"/>
-            <path d="M29 11V26M36 11V26" stroke="#704d30" stroke-width="2.5" stroke-linecap="round"/>
-            <path d="M30 33V55" stroke="#f7e2b5" stroke-width="7" stroke-linecap="round"/>
-            <circle cx="30" cy="55" r="2" fill="#69452b"/>
-          </svg></span>
+        <button id="spatula-button" class="stat-tile stat-magic" type="button" disabled aria-label="Magic: 2 attack, 0 of 9 charge">
+          <span class="stat-icon match-glyph" data-resource="bombs" aria-hidden="true"></span>
           <span class="cast-indicator" aria-hidden="true">CAST</span>
           <span class="attack-boost" id="attack-boost" aria-hidden="true">+0</span>
-          <span class="magic-charge"><span data-resource="bombs" aria-hidden="true">✦</span> <span id="magic-count">0/9</span></span>
+          <span class="magic-charge" id="magic-count">0/9</span>
           <span class="stat-number attack-number"><span id="attack-count">2</span> <small>ATK</small></span>
         </button>
-        <div class="stat-tile stat-moves" id="moves-tile" role="img" aria-label="60 moves">
+        <div class="stat-tile stat-moves" id="moves-tile" role="img" aria-label="30 moves">
           <span class="stat-icon match-glyph" data-resource="food" aria-hidden="true"></span>
-          <span class="stat-number" id="move-count">60</span>
+          <span class="stat-number" id="move-count">30</span>
         </div>
         <div class="stat-tile stat-health" id="health-tile" role="img" aria-label="9 of 9 health">
           <span class="stat-icon match-glyph" data-resource="health" aria-hidden="true"></span>
@@ -425,46 +477,55 @@ button { font: inherit; }
           <span class="objective-question" aria-hidden="true">?</span>
         </div>
       </div>
-      <div class="secondary-stats" aria-label="Level, lumenstones and score">
+      <div class="secondary-stats" aria-label="Level, presents and score">
         <span>LEVEL <b id="level-count">1/3</b></span>
-        <span>LUMENSTONES <b id="lumen-count">0/3</b></span>
+        <span>PRESENTS <b id="lumen-count">0/3</b></span>
         <span class="score-text">SCORE <b id="score-count">0</b></span>
       </div>
     </div>
     <button id="return-spells" type="button" hidden>Back to Spells</button>
     <div id="status" class="hud" role="status">Find the key, then escape.</div>
 
-    <section id="board-wrap" aria-label="Dungeon Match-3 board">
+    <section id="board-wrap" aria-label="Match Three board">
       <div id="board"></div>
       <div id="match-fx" aria-hidden="true"></div>
       <div id="flash" aria-hidden="true"></div>
       <div id="results" class="results hidden" role="dialog" aria-modal="true"></div>
-      <div id="spell-panel" class="results hidden" role="dialog" aria-modal="true" aria-label="Choose a magic spatula spell"></div>
+      <div id="spell-panel" class="results hidden" role="dialog" aria-modal="true" aria-label="Choose a spell"></div>
     </section>
 
-    <footer class="hud bottom-hud"><div id="version">Reset 4.0 • Mrs. Claus & the magic spatula</div></footer>
+    <footer class="hud bottom-hud"><div id="version">Reset 4.2</div></footer>
   </main>
+  <dialog id="restart-dialog" class="results-panel" aria-labelledby="restart-title" aria-describedby="restart-message">
+    <h2 id="restart-title">New game</h2>
+    <p id="restart-message">Are you sure you want to start a new game?</p>
+    <form method="dialog" class="restart-actions">
+      <button value="cancel" autofocus>Cancel</button>
+      <button value="restart">Start new game</button>
+    </form>
+  </dialog>
   <dialog id="help-dialog" class="results-panel" aria-labelledby="help-title">
     <h2 id="help-title" tabindex="-1">How to play</h2>
     <section id="help-rules">
       <p>Swipe from a tile toward a neighbor to swap resources. Match three or more in a row or column. A successful match moves your hero in the swipe direction, or attacks if a monster is in the way.</p>
       <p>Find the key and reach the exit. On the final level, rescue Santa and bring him to the exit. The key and Santa are revealed from one tile away. Red tiles warn of damage on your next move.</p>
-      <p>When the spatula reaches 9/9 Magic, tap it to choose a spell.</p>
+      <p>When Magic reaches 9/9, tap its icon to choose a spell.</p>
       <button id="show-icon-guide" type="button">Resources &amp; icons →</button>
     </section>
     <section id="help-icons" hidden>
       <dl class="icon-guide">
         <dt><span data-resource="food" aria-hidden="true"></span></dt><dd><strong>Moves.</strong> Refill your move supply. Every successful swipe spends one Move.</dd>
         <dt><span data-resource="health" aria-hidden="true"></span></dt><dd><strong>Health.</strong> Recover lost health, up to 9.</dd>
-        <dt><span data-resource="bombs" aria-hidden="true"></span></dt><dd><strong>Magic.</strong> Charge the spatula. Tap it at 9/9 to pick a spell.</dd>
+        <dt><span data-resource="bombs" aria-hidden="true"></span></dt><dd><strong>Magic.</strong> Tap the Magic icon at 9/9 to pick a spell.</dd>
         <dt><span data-resource="gold" aria-hidden="true"></span></dt><dd><strong>Gold.</strong> Collect coins. Game Over lists the gold you matched.</dd>
-        <dt><span data-resource="monster" aria-hidden="true"></span></dt><dd><strong>Summoning.</strong> Every two summon points bring another monster into the dungeon.</dd>
+        <dt><span data-resource="monster" aria-hidden="true"></span></dt><dd><strong>Summoning.</strong> A match summons a level-appropriate monster after your move. A match of five or more summons two.</dd>
         <dt aria-hidden="true">@</dt><dd><strong>Hero.</strong> Your position on the board.</dd>
-        <dt aria-hidden="true">2</dt><dd><strong>Monster.</strong> The number shows its remaining health.</dd>
+        <dt aria-hidden="true">2</dt><dd><strong>Monster.</strong> The number shows its remaining health. Guards start with 1–3 HP and attack cardinally. Hunters start with 3–5 HP and attack all eight neighbors through open space.</dd>
         <dt aria-hidden="true">K / S</dt><dd><strong>Key / Santa.</strong> Collect the objective before taking the exit.</dd>
-        <dt aria-hidden="true">◇</dt><dd><strong>Lumenstone.</strong> Optional score bonus after it's revealed.</dd>
-        <dt><span class="stairs stairs-up" aria-hidden="true"></span></dt><dd><strong>Upstairs.</strong> The entrance where you start the level.</dd>
-        <dt><span class="stairs stairs-down" aria-hidden="true"></span></dt><dd><strong>Downstairs.</strong> The exit to the next level, or out of the dungeon on level 3.</dd>
+        <dt><span class="present-icon" aria-hidden="true"></span></dt><dd><strong>Present.</strong> Optional score bonus after it’s revealed.</dd>
+        <dt><span class="door" aria-hidden="true"></span></dt><dd><strong>Enter / Exit.</strong> The doors into and out of the dungeon.</dd>
+        <dt><span class="stairs stairs-up" aria-hidden="true"></span></dt><dd><strong>Up.</strong> The stairs you arrived on.</dd>
+        <dt><span class="stairs stairs-down" aria-hidden="true"></span></dt><dd><strong>Down.</strong> The stairs to the next level.</dd>
       </dl>
       <button id="show-help-rules" type="button">← How to play</button>
     </section>
@@ -495,13 +556,12 @@ const CONFIG = {
   EXIT_COLOR: "#f0b83f",
   STARTING_HP: 9,
   MAX_HP: 9,
-  STARTING_FOOD: 60,
+  STARTING_FOOD: 30,
+  MAX_MOVES: 60,
   STAGE_COUNT: 3,
-  SUMMON_MATCHES_PER_SPAWN: 2,
+  SUMMON_POINTS_PER_EXTRA_MONSTER: 2,
   STORAGE_CAP: 9,
-  MONSTER_START_COUNTS: { 1:3, 2:3, 3:6 },
-  MONSTER_MIN_HP: 1,
-  MONSTER_MAX_HP: 3,
+  MONSTER_START_COUNTS: { 1:3, 2:3, 3:5 },
   BASE_ATTACK_DAMAGE: 2,
   MONSTER_SIGHT_RADIUS: 3,
   MONSTER_MEMORY_TURNS: 1,
@@ -751,7 +811,7 @@ function matchSummary(state) {
 }
 
 function runData(state) {
-  return {version:"4.0",outcome:state.gameWon ? "rescued" : state.gameOverReason || "in-progress",
+  return {version:"4.2",outcome:state.gameWon ? "rescued" : state.gameOverReason || "in-progress",
     stage:state.stage,alarmActive:state.alarmActive,keyDiscovered:state.keyDiscovered,lumenDiscovered:state.lumenDiscovered,health:state.hp,resources:{...state.resources},score:scoreBreakdown(state),
     matches:matchSummary(state),stats:state.stats};
 }
@@ -782,7 +842,7 @@ function downloadRunData(state) {
   const link=document.createElement("a");
   const stamp=new Date().toISOString().replace(/[:.]/g,"-");
   link.href=url;
-  link.download=`dungeon-match3-v4.0-${state.gameWon ? "rescued" : state.gameOverReason || "run"}-${stamp}.json`;
+  link.download=`dungeon-match3-v4.2-${state.gameWon ? "rescued" : state.gameOverReason || "run"}-${stamp}.json`;
   try {
     document.body.appendChild(link);
     link.click();
@@ -895,11 +955,8 @@ function grantRunReward(state, itemType, runLength) {
     return;
   }
   if (itemType === "monster") {
-    // M is no longer a stored resource: every match immediately creates enemies.
-    // Every two summon units create one enemy; remainder carries between stages.
-    state.summonProgress += gained;
-    state.pendingSpawns += Math.floor(state.summonProgress / CONFIG.SUMMON_MATCHES_PER_SPAWN);
-    state.summonProgress %= CONFIG.SUMMON_MATCHES_PER_SPAWN;
+    // Every monster match summons a level-appropriate enemy. A five-or-longer run summons two.
+    state.pendingSpawns += Math.max(1, Math.floor(gained / CONFIG.SUMMON_POINTS_PER_EXTRA_MONSTER));
     return;
   }
   if(itemType === "bombs") {
@@ -909,7 +966,7 @@ function grantRunReward(state, itemType, runLength) {
   }
   // Moves replenish up to the starting reserve; other resources retain their caps.
   state.resources[itemType] = Math.max(state.resources[itemType],
-    Math.min(itemType === "food" ? CONFIG.STARTING_FOOD : CONFIG.STORAGE_CAP, state.resources[itemType] + gained));
+    Math.min(itemType === "food" ? CONFIG.MAX_MOVES : CONFIG.STORAGE_CAP, state.resources[itemType] + gained));
 }
 
 function occupiedCells(state) {
@@ -976,7 +1033,7 @@ function placeLumenstone(state,rng=defaultRng) {
   return !!state.lumenPos;
 }
 
-function spawnMonster(state, rng = defaultRng) {
+function spawnMonster(state, rng = defaultRng, {type: forcedType = null} = {}) {
   const candidates = [];
   for (let r = 0; r < CONFIG.BOARD_ROWS; r++) {
     for (let c = 0; c < CONFIG.BOARD_COLS; c++) {
@@ -990,9 +1047,10 @@ function spawnMonster(state, rng = defaultRng) {
   }
   if (!candidates.length) return false;
   const [row,col] = choice(candidates, rng);
-  const monster = { row, col,
-    hp: randintInclusive(CONFIG.MONSTER_MIN_HP, CONFIG.MONSTER_MAX_HP, rng) + (state.stage - 1),
-    type: choice(MONSTER_STAGE_POOLS[state.stage] || MONSTER_STAGE_POOLS[1],rng),
+  const type = forcedType ?? choice(MONSTER_STAGE_POOLS[state.stage] || MONSTER_STAGE_POOLS[1], rng);
+  const definition = MONSTER_TYPES[type];
+  const monster = { row, col, type,
+    hp: randintInclusive(definition.minHp, definition.maxHp, rng),
     aggro: false, lastSeen: null, memory: 0, seesPlayer: false };
   state.monsters.push(monster);
   if (state.alarmActive || monsterCanSeePlayer(state,monster)) alertMonster(state,monster);
@@ -1002,13 +1060,13 @@ function spawnMonster(state, rng = defaultRng) {
 // Types describe capabilities; AI and rendering consume the same definitions.
 // Add future monsters here, then give them a weight in MONSTER_STAGE_POOLS.
 const MONSTER_TYPES = {
-  basic: { name: "Guard", attack: "cardinal", symbol: "+", damage: 1 },
-  advanced: { name: "Hunter", attack: "eight", symbol: "✳︎", damage: 1 },
+  basic: { name: "Guard", minHp: 1, maxHp: 3, attack: "cardinal", symbol: "+", damage: 1 },
+  advanced: { name: "Hunter", minHp: 3, maxHp: 5, attack: "eight", symbol: "✳︎", damage: 1 },
 };
 const MONSTER_STAGE_POOLS = {
   1: ["basic"],
   2: ["basic", "basic", "advanced"],
-  3: ["basic", "advanced", "advanced"],
+  3: ["basic", "advanced"],
 };
 
 function monsterType(monster) {
@@ -1050,13 +1108,7 @@ function monsterCanAttack(state, monster, row, col) {
   if(monster.frozenTurns>0)return false;
   const dr=Math.abs(monster.row-row), dc=Math.abs(monster.col-col);
   if (Math.max(dr,dc)!==1 || !isWalkable(state.dungeon,row,col)) return false;
-  if (dr && dc) {
-    if (monsterType(monster).attack !== "eight") return false;
-    // Only room interiors allow diagonal attacks. Doors, halls and stairs
-    // always restrict monsters to cardinal attacks, even for advanced types.
-    const room=roomIndex(state.dungeon,monster.row,monster.col);
-    if (room<0 || roomIndex(state.dungeon,row,col)!==room) return false;
-  }
+  if (dr && dc && monsterType(monster).attack !== "eight") return false;
   return hasLineOfSight(state.dungeon,monster.row,monster.col,row,col);
 }
 
@@ -1187,14 +1239,17 @@ function updateScore(state) {
 }
 
 function processTriggers(state, rng = defaultRng) {
+  const beforeCount = state.monsters.length;
   while (state.pendingSpawns > 0) {
     state.pendingSpawns--;
-    if (spawnMonster(state,rng)) {
+    if (spawnMonster(state, rng)) {
       state.stats.monstersSpawned++;
       state.lastEvent = "MONSTER SPAWNED!";
     }
   }
-
+  if (state.monsters.length > beforeCount) {
+    state.animationEvents.push({type: "summon", after: snapshotBoard(state)});
+  }
 }
 
 const SPELLS = {
@@ -1202,7 +1257,7 @@ const SPELLS = {
   heal:{name:"Christmas Cookies",description:"Restore your health to 9."},
   teleport:{name:"Chimney Hop",description:"Teleport to a random empty floor tile. Your turn continues there."},
   shuffle:{name:"Stir the Pot",description:"Reshuffle the board and collect any matches it creates."},
-  map:{name:"Reveal Map",description:"Reveal the key or Santa and the lumenstone on this stage."},
+  map:{name:"Reveal Map",description:"Reveal the key or Santa and the present on this stage."},
 };
 
 function activateSpatula(state,rng=defaultRng) {
@@ -1244,7 +1299,7 @@ function chooseSpell(state, id, rng = defaultRng) {
       (id !== "pass" && !state.spellOffer.includes(id))) return false;
   state.spellOffer=null;state.spellPanelHidden=false;
   state.magicReady=false;state.resources.bombs=0;
-  state.animationEvents=[];state.animationHeroFrom=[state.playerRow,state.playerCol];
+  state.animationEvents=[];
   if(id==="pass") {
     state.stats.spellPasses++;state.lastEvent="MAGIC CHARGE PASSED";
   } else {
@@ -1267,6 +1322,7 @@ function chooseSpell(state, id, rng = defaultRng) {
       state.lastFallCells = new Set();
       state.animationEvents.push({type: "shuffle", after: snapshotBoard(state)});
       resolveAllMatches(state, rng, {source: "spell"});
+      processTriggers(state, rng);
       endIfNoMoves(state);
     } else if(id==="teleport") {
       const spots=[];
@@ -1276,10 +1332,13 @@ function chooseSpell(state, id, rng = defaultRng) {
             [state.dungeon.entrancePos,state.dungeon.exitPos].some(p=>p[0]===r && p[1]===c))continue;
         spots.push([r,c]);
       }
-      if(spots.length)[state.playerRow,state.playerCol]=choice(spots,rng);
+      const before = snapshotBoard(state);
+      if (spots.length) [state.playerRow,state.playerCol] = choice(spots,rng);
       // Teleport is a free action between turns, not a new movement turn.
       discoverObjective(state);
+      state.animationEvents.push({type: "teleport", before, after: snapshotBoard(state)});
       resolveAllMatches(state,rng,{source:"spell"});
+      processTriggers(state, rng);
     }
   }
   updateScore(state);
@@ -1321,6 +1380,7 @@ function swapIsBoardLegal(state, fromRow, fromCol, direction) {
 function snapshotBoard(state) {
   return {
     stage: state.stage,
+    hp: state.hp,
     dungeon: state.dungeon,
     itemGrid: state.itemGrid.map(row => [...row]),
     playerRow: state.playerRow, playerCol: state.playerCol,
@@ -1328,7 +1388,6 @@ function snapshotBoard(state) {
     keyPos: [...state.keyPos], hasKey: state.hasKey,
     keyDiscovered:state.keyDiscovered,alarmActive:state.alarmActive,
     lumenPos: state.lumenPos ? [...state.lumenPos] : null, lumenDiscovered:state.lumenDiscovered,
-    lastProximityDamage: 0, lastAttackDamage: 0,
     lastFallCells: new Set(),
   };
 }
@@ -1341,9 +1400,6 @@ function resolveAllMatches(state, rng = defaultRng, {source="natural"} = {}) {
     fixedCells: [state.dungeon.entrancePos,state.dungeon.exitPos],
     onFall: (changed) => { for (const pos of changed) state.lastFallCells.add(pos); },
     rewardCallback: (kind, length) => grantRunReward(state, kind, length),
-    // Spawn after each wave so new monsters can block matches in the next wave.
-    // The spatula remains charged across turns; it never interrupts cascades.
-    afterWave: () => processTriggers(state, rng),
     onWave: (phase, runs, dropDistances) => {
       if (phase === "before") {
         // Display only usable Magic when a wave contains multiple Magic runs.
@@ -1383,7 +1439,7 @@ function resolveAllMatches(state, rng = defaultRng, {source="natural"} = {}) {
     },
     rng,
   });
-  processTriggers(state, rng);
+  // Summon rewards remain queued until the turn or spell finishes resolving.
   // Only additional waterfall waves count toward cascade damage.
   // This function grants resources for every wave, but never stores damage:
   // only the initiating swap's waves can empower an attack on that turn.
@@ -1445,7 +1501,6 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null, stag
     roomsExplored: 0,
     keysCollected: 0,
     stageLumenCollected: false,
-    summonProgress: 0,
     dungeon: layout,
     itemGrid: itemGrid ? itemGrid.map((row, r) => row.map((item, c) =>
       (r === layout.entrancePos[0] && c === layout.entrancePos[1]) ||
@@ -1516,11 +1571,17 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null, stag
   state.keyPos = choice(keyCandidates,rng);
   placeLumenstone(state,rng);
   discoverObjective(state);
-  for (let i = 0; i < CONFIG.MONSTER_START_COUNTS[stage]; i++) spawnMonster(state,rng);
+  const openingCount = CONFIG.MONSTER_START_COUNTS[stage];
+  const hunters = stage === 3 ? randintInclusive(1, 3, rng) : 0;
+  for (let i = 0; i < openingCount; i++) {
+    const type = stage === 3 ? (i < hunters ? "advanced" : "basic") : null;
+    spawnMonster(state, rng, {type});
+  }
   // One hidden optional lumenstone exists from the start of every stage.
   if (itemGrid) {
     // Custom or restored boards may already contain natural three-in-a-row matches.
     resolveAllMatches(state, rng, {source:"initial"});
+    processTriggers(state, rng);
     updateMonsterAwareness(state);
     return state;
   }
@@ -1537,7 +1598,6 @@ function advanceStage(state, rng = defaultRng) {
   const next = newGame({rng, stage: state.stage + 1});
   const persistent = {
     resources: {...state.resources}, hp: state.hp, stats: state.stats,
-    summonProgress: state.summonProgress,
     stagesCompleted: state.stagesCompleted + 1,
     keysCollected: state.keysCollected + 1,
     roomsExplored: state.roomsExplored + Math.max(0,state.visitedRooms.size-1),
@@ -1580,7 +1640,6 @@ function performMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng
   state.lastCascadeBonus = 0;
   state.lastFallCells = new Set();
   state.animationEvents = [];
-  state.animationHeroFrom = [state.playerRow, state.playerCol];
 
   if (state.gameOver || state.gameWon) return false;
   if (!(direction in DIRECTIONS)) return false;
@@ -1659,8 +1718,12 @@ function resolveHeroAction(state,{direction,turnCascadeBonus,skipHeroAction=fals
       killed: defender.hp <= 0,
     });
   } else {
-    if(skipHeroAction)state.stats.turns++;
-    else movePlayerOneStep(state, direction);
+    if (skipHeroAction) state.stats.turns++;
+    else {
+      const before = snapshotBoard(state);
+      movePlayerOneStep(state, direction);
+      state.animationEvents.push({type: "hero-movement", before, after: snapshotBoard(state)});
+    }
     moved = true;
   }
 
@@ -1680,13 +1743,12 @@ function resolveHeroAction(state,{direction,turnCascadeBonus,skipHeroAction=fals
       state.lumenDiscovered=true;
       state.stageLumenCollected = true;
       state.lumenPos = null;
-      state.lastEvent = `LUMENSTONE +${CONFIG.LUMEN_SCORE} BONUS!`;
+      state.lastEvent = `PRESENT +${CONFIG.LUMEN_SCORE} BONUS!`;
     }
     // The tile just vacated by the hero is matchable again.
-    resolveAllMatches(state, rng, {source:"hero-reveal"});
+    if (state.hp > 0) resolveAllMatches(state, rng, {source:"hero-reveal"});
   }
   discoverObjective(state);
-  processTriggers(state, rng);
   return pauseOrContinue(state,{phase:"enemies",damagedThisTurn},rng);
 }
 
@@ -1702,24 +1764,31 @@ function resolveEnemyPhase(state,{damagedThisTurn},rng) {
   }
 
   if (state.playerRow === state.dungeon.exitPos[0] && state.playerCol === state.dungeon.exitPos[1] && state.hasKey) {
+    processTriggers(state, rng);
     if (state.stage === CONFIG.STAGE_COUNT) {
       state.gameWon=true;
       state.gameOverReason="rescue";
       state.lastEvent="SANTA RESCUED!";
       updateScore(state);
-    } else advanceStage(state, rng);
+    } else {
+      const events = state.animationEvents;
+      advanceStage(state, rng);
+      state.animationEvents = events;
+    }
     return true;
   }
 
   updateMonsterAwareness(state);
-  resolveProximityDamage(state, damagedThisTurn);
+  if (resolveProximityDamage(state, damagedThisTurn)) {
+    state.animationEvents.push({type: "enemy-hit", after: snapshotBoard(state)});
+  }
   if (!state.gameOver) {
     const monsterBefore = snapshotBoard(state);
     const oldPositions = new Map(state.monsters.map(m => [m,[m.row,m.col]]));
     const hunters=new Set(state.monsters.filter(monster=>monster.aggro));
     moveMonsters(state, rng, damagedThisTurn);
     // Hunting monsters may follow and hit, but each monster hits at most once.
-    resolveProximityDamage(state,damagedThisTurn,{eligible:hunters,chase:true});
+    const chaseDamage = resolveProximityDamage(state,damagedThisTurn,{eligible:hunters,chase:true});
     const movements = [];
     for (const monster of state.monsters) {
       const from = oldPositions.get(monster);
@@ -1733,12 +1802,14 @@ function resolveEnemyPhase(state,{damagedThisTurn},rng) {
         after: snapshotBoard(state), movements,
       });
     }
+    if (chaseDamage) state.animationEvents.push({type: "enemy-hit", after: snapshotBoard(state)});
     // Wandering into range still waits until the next turn; pursuing enemies
     // have already applied their one permitted hit after following.
     // A monster can move away and reveal an ordinary three-in-a-row.
     // Resolve it automatically; no player swap is needed.
     if (!state.gameOver) resolveAllMatches(state, rng, {source:"monster-reveal"});
   }
+  if (!state.gameOver) processTriggers(state, rng);
   return pauseOrContinue(state,{phase:"complete"},rng);
 }
 
@@ -1796,6 +1867,7 @@ function resetGame() {
   animationToken++;
   animating = false;
   matchFxEl.replaceChildren();
+  flashEl.className = "";
   game = newGame();
   spellPanelEl.classList.add("hidden");returnSpellsBtn.hidden=true;
   pointerStart = null;
@@ -1816,7 +1888,7 @@ function statusText() {
   if (isThreatened(game, game.playerRow, game.playerCol))
     return `⚠ Adjacent enemies: −${adjacentMonsterCount(game, game.playerRow, game.playerCol)} ♥ on next move`;
   if (game.alarmActive) return game.stage===CONFIG.STAGE_COUNT
-    ? "ALARM — Santa is with you — reach the stairs!" : "ALARM — all monsters hunting — reach the stairs!";
+    ? "ALARM — Santa is with you — reach the exit door!" : "ALARM — all monsters hunting — reach the stairs!";
   const objective=game.stage===CONFIG.STAGE_COUNT ? "Santa" : "the key";
   return game.keyDiscovered ? `${objective} spotted — collect ${game.stage===CONFIG.STAGE_COUNT ? "S" : "K"}!`
     : `Search the rooms for ${objective}.`;
@@ -1866,7 +1938,7 @@ function renderResults() {
       <div class="results-list">
         <div>New rooms: +${scoreBreakdown(game).rooms}</div>
         <div>Key: +${scoreBreakdown(game).key}</div>
-        <div>Lumenstones (${game.stats.lumenCollected}): +${scoreBreakdown(game).lumen}</div>
+        <div>Presents (${game.stats.lumenCollected}): +${scoreBreakdown(game).lumen}</div>
         <div>Levels / rescue: +${scoreBreakdown(game).escape}</div>
         <div>Health bonus: +${scoreBreakdown(game).survival}</div>
         <div>Turns (${game.stats.turns}): −${scoreBreakdown(game).turns}</div>
@@ -1922,7 +1994,7 @@ function renderSpellChoice() {
   returnSpellsBtn.hidden=!game.spellPanelHidden;
   if(game.spellPanelHidden) {spellPanelEl.classList.add("hidden");return;}
   spellPanelEl.innerHTML=`<div class="results-panel">
-    <h2>Magic spatula charged!</h2>
+    <h2>Magic charged!</h2>
     <p>Choose one spell or Pass. The board is paused while you decide.</p>
     ${game.spellOffer.map(id=>`<button type="button" data-spell="${id}"><strong>${SPELLS[id].name}</strong><br><span style="font-size:12px">${SPELLS[id].description}</span></button>`).join("")}
     <button id="pass-spell" type="button">Pass — discard charge</button>
@@ -1933,7 +2005,7 @@ function renderSpellChoice() {
     if(animating || !game.spellOffer)return;
     pointerStart=null;spellPanelEl.classList.add("hidden");returnSpellsBtn.hidden=true;
     if (chooseSpell(game, id)) {
-      if (id === "shuffle") void playCascadeAnimation(game.animationEvents);
+      if (game.animationEvents.length) void playCascadeAnimation(game.animationEvents);
       else { render(); renderSpellChoice(); }
     }
   };
@@ -1949,18 +2021,24 @@ function setAttackDisplay(bonus = 0) {
   attackCountEl.textContent = effective;
   attackBoostEl.textContent = `+${bonus}`;
   spatulaBtn.classList.toggle("boosted", bonus > 0);
-  spatulaBtn.setAttribute("aria-label", `Magic spatula: ${effective} attack, ${game.resources.bombs} of ${CONFIG.MAGIC_THRESHOLD} magic${game.magicReady ? "; ready to cast" : ""}`);
+  spatulaBtn.setAttribute("aria-label", `Magic: ${effective} attack, ${game.resources.bombs} of ${CONFIG.MAGIC_THRESHOLD} charge${game.magicReady ? "; ready to cast" : ""}`);
 }
 
-function renderHud() {
-  statusEl.textContent = statusText();
-  statusEl.classList.toggle("damage", game.lastProximityDamage + game.lastAttackDamage > 0);
-  statusEl.classList.toggle("danger", !game.gameOver && !game.gameWon &&
-    isThreatened(game, game.playerRow, game.playerCol));
+function renderHealth(hp) {
+  healthCountEl.textContent = `${hp}/${CONFIG.MAX_HP}`;
+  healthTileEl.setAttribute("aria-label", `${hp} of ${CONFIG.MAX_HP} health`);
+}
+
+function renderHud(hp = game.hp) {
+  if (!animating) {
+    statusEl.textContent = statusText();
+    statusEl.classList.toggle("damage", game.lastProximityDamage + game.lastAttackDamage > 0);
+    statusEl.classList.toggle("danger", !game.gameOver && !game.gameWon &&
+      isThreatened(game, game.playerRow, game.playerCol));
+  }
   movesCountEl.textContent = game.resources.food;
   movesTileEl.setAttribute("aria-label", `${game.resources.food} moves remaining`);
-  healthCountEl.textContent = `${game.hp}/${CONFIG.MAX_HP}`;
-  healthTileEl.setAttribute("aria-label", `${game.hp} of ${CONFIG.MAX_HP} health`);
+  renderHealth(hp);
   magicCountEl.textContent = `${game.resources.bombs}/${CONFIG.MAGIC_THRESHOLD}`;
   spatulaBtn.classList.toggle("ready", game.magicReady && !game.gameOver && !game.gameWon);
   spatulaBtn.disabled = !game.magicReady || game.gameOver || game.gameWon || animating || !!game.spellOffer;
@@ -1985,7 +2063,7 @@ function paintResourceIcon(element, item) {
 
 function renderBoard(view = game, { matched = null, dropDistances = null,
   heroFrom = null, monsterMovements = null,
-  attackTarget = null, attackWindup = false } = {}) {
+  attackTarget = null, attackWindup = false, heroHit = false } = {}) {
   const heroRow = view.playerRow;
   const heroCol = view.playerCol;
   const matchKeys = matched ? new Set(matched.flatMap(m => m.cells.map(coordKey))) : null;
@@ -2022,8 +2100,7 @@ function renderBoard(view = game, { matched = null, dropDistances = null,
         tile.classList.add("heat");
         tile.style.setProperty("--heat-alpha", dangerOpacity(monsterCount).toFixed(4));
       }
-      if (isHero && view.lastProximityDamage + view.lastAttackDamage > 0)
-        tile.classList.add("recent-hit");
+      if (isHero && heroHit) tile.classList.add("recent-hit");
 
       const item = view.itemGrid[row][col];
       if (item !== null) {
@@ -2043,11 +2120,19 @@ function renderBoard(view = game, { matched = null, dropDistances = null,
       const isExit = row === view.dungeon.exitPos[0] && col === view.dungeon.exitPos[1];
       if (isEntrance || isExit) {
         tile.classList.add(isEntrance ? "entrance-tile" : "exit-tile");
-        tile.setAttribute("aria-label", isEntrance ? "Entrance staircase" : "Exit staircase");
-        const stairs = document.createElement("span");
-        stairs.className = isEntrance ? "stairs stairs-up" : "stairs stairs-down";
-        stairs.setAttribute("aria-hidden", "true");
-        tile.appendChild(stairs);
+        const isDoor = isEntrance ? view.stage === 1 : view.stage === CONFIG.STAGE_COUNT;
+        const label = isEntrance ? (isDoor ? "Enter" : "Up") : (isDoor ? "Exit" : "Down");
+        tile.title = label;
+        tile.setAttribute("aria-label", label);
+        const marker = document.createElement("span");
+        marker.className = "passage-mark";
+        marker.setAttribute("aria-hidden", "true");
+        const icon = document.createElement("span");
+        icon.className = isDoor ? "door" : (isEntrance ? "stairs stairs-up" : "stairs stairs-down");
+        const caption = document.createElement("small");
+        caption.textContent = label;
+        marker.append(icon, caption);
+        tile.appendChild(marker);
       }
       if (keyIsVisible(view,row,col)) {
         tile.classList.add("key-tile");
@@ -2060,7 +2145,11 @@ function renderBoard(view = game, { matched = null, dropDistances = null,
         tile.classList.add("lumen-tile");
         const stone=document.createElement("span");
         stone.className="lumen-mark";
-        stone.textContent="◇";
+        stone.setAttribute("aria-label", "Present");
+        const icon = document.createElement("span");
+        icon.className = "present-icon";
+        icon.setAttribute("aria-hidden", "true");
+        stone.appendChild(icon);
         tile.appendChild(stone);
       }
       const monster = monsterAt(view,row,col);
@@ -2087,7 +2176,7 @@ function renderBoard(view = game, { matched = null, dropDistances = null,
         pattern.className="monster-pattern";
         pattern.textContent=definition.symbol;
         mark.appendChild(pattern);
-        tile.title=`${definition.name}: ${monster.hp} HP; ${definition.attack === "eight" ? "eight-way in rooms" : "cardinal"} attacks; ${monster.aggro ? "pursuing" : "wandering"}`;
+        tile.title=`${definition.name}: ${monster.hp} HP; ${definition.attack === "eight" ? "eight-way" : "cardinal"} attacks; ${monster.aggro ? "pursuing" : "wandering"}`;
         tile.appendChild(mark);
       }
       if (isHero) {
@@ -2143,117 +2232,81 @@ function showHeroBonusPopup(bonus) {
   matchFxEl.appendChild(pop);
 }
 
-async function playCascadeAnimation(events, damageTaken = 0) {
-  if (!events.length && !damageTaken) { render(); renderSpellChoice(); return; }
+async function playCascadeAnimation(events) {
+  if (!events.length) { render(); renderSpellChoice(); return; }
   const token = ++animationToken;
   animating = true;
   const isActive = () => token === animationToken;
-  const attackIndex = events.findIndex(event => event.type === "attack");
-  const attackEvent = attackIndex >= 0 ? events[attackIndex] : null;
-  renderHud();
+  const attackEvent = events.find(event => event.type === "attack");
+  renderHud(events[0].before?.hp ?? events[0].after.hp);
   resultsEl.classList.add("hidden");
 
-  async function playMatchFrame(frame, viewFor = v => v, options = {}) {
+  let enemiesReadyAt = 0;
+  for (const [index, event] of events.entries()) {
     if (!isActive()) return;
-    renderBoard(viewFor(frame.before), { matched: frame.matches, ...options });
-    showMatchRewards(frame.matches);
-    await wait(390);
-    if (!isActive()) return;
-    matchFxEl.replaceChildren();
-    renderBoard(viewFor(frame.after), { dropDistances: frame.dropDistances });
-    if (attackEvent && frame.source === "swap") setAttackDisplay(Math.max(0, frame.wave - 1));
-    await wait(460);
+    switch (event.type) {
+      case "hero-movement":
+        renderBoard(event.after, {heroFrom: [event.before.playerRow, event.before.playerCol]});
+        await wait(170);
+        enemiesReadyAt = performance.now() + 500;
+        break;
+      case "attack":
+        renderBoard(event.before);
+        if (event.bonus > 0) {
+          showHeroBonusPopup(event.bonus);
+          await wait(390);
+          if (!isActive()) return;
+          matchFxEl.replaceChildren();
+        }
+        renderBoard(event.before, {attackWindup: true, attackTarget: event.target});
+        await wait(230);
+        if (!isActive()) return;
+        setAttackDisplay(0);
+        renderBoard(event.after, {
+          heroFrom: event.killed ? [event.before.playerRow, event.before.playerCol] : null,
+          heroHit: !event.killed && Boolean(event.retaliationDamage),
+        });
+        renderHealth(event.after.hp);
+        if (event.retaliationDamage) flash("enemy-hit");
+        await wait(event.killed ? 170 : 180);
+        enemiesReadyAt = performance.now() + 500;
+        break;
+      case "monster-movement":
+      case "enemy-hit": {
+        const delay = enemiesReadyAt - performance.now();
+        if (delay > 0) await wait(delay);
+        if (!isActive()) return;
+        if (event.type === "monster-movement") {
+          renderBoard(event.after, {monsterMovements: event.movements});
+          await wait(280);
+        } else {
+          renderBoard(event.after, {heroHit: true});
+          renderHealth(event.after.hp);
+          flash("enemy-hit");
+          if (events[index + 1]?.type !== "monster-movement") await wait(180);
+        }
+        break;
+      }
+      case "summon":
+      case "shuffle":
+      case "teleport":
+        renderBoard(event.after);
+        await wait(200);
+        break;
+      default:
+        renderBoard(event.before, {matched: event.matches});
+        showMatchRewards(event.matches);
+        await wait(390);
+        if (!isActive()) return;
+        matchFxEl.replaceChildren();
+        renderBoard(event.after, {dropDistances: event.dropDistances});
+        renderHealth(event.after.hp);
+        if (attackEvent && event.source === "swap") setAttackDisplay(Math.max(0, event.wave - 1));
+        await wait(460);
+    }
   }
 
-  if (events[0]?.type === "shuffle") {
-    renderBoard(events[0].after);
-    await wait(200);
-    for (const frame of events.slice(1)) {
-      if (!isActive()) return;
-      await playMatchFrame(frame);
-    }
-  } else if (attackEvent) {
-    // Crucial: the hero stays at the origin throughout the attack's
-    // waterfall. Resolve the attack after its triggering cascades, then
-    // animate movement into the target only when the enemy was defeated.
-    for (const event of events.slice(0, attackIndex)) {
-      if (!isActive()) return;
-      if (!event.type) await playMatchFrame(event);
-    }
-    if (!isActive()) return;
-    renderBoard(attackEvent.before);
-    if (attackEvent.bonus > 0) {
-      showHeroBonusPopup(attackEvent.bonus);
-      await wait(390); // Same lifespan as a match reward popup.
-      if (!isActive()) return;
-      matchFxEl.replaceChildren();
-    }
-    renderBoard(attackEvent.before, {
-      attackWindup: true, attackTarget: attackEvent.target,
-    });
-    await wait(230);
-    if (!isActive()) return;
-    setAttackDisplay(0); // Cascade power was just spent on this attack.
-    if (attackEvent.retaliationDamage) flash("enemy-hit");
-    renderBoard(attackEvent.after, {
-      heroFrom: attackEvent.killed
-        ? [attackEvent.before.playerRow,attackEvent.before.playerCol] : null,
-    });
-    await wait(240);
-    // On an attack turn, monster movement follows the resolved attack
-    // rather than appearing to strike before the match animation.
-    for (const event of events.slice(attackIndex + 1)) {
-      if (!isActive()) return;
-      if (event.type === "monster-movement") {
-        renderBoard(event.after, { monsterMovements: event.movements });
-        await wait(280);
-      } else if (!event.type) {
-        await playMatchFrame(event);
-      }
-    }
-  } else {
-    // Preserve Reset 2.3's simultaneous hero/monster movement for ordinary
-    // moves. This is only visual; game logic remains deterministic.
-    const monsterEvent = events.find(event => event.type === "monster-movement");
-    const movements = monsterEvent?.movements || [];
-    const cascadeFrames = events.filter(event => !event.type).slice(0, 12);
-    const destination = [game.playerRow, game.playerCol];
-    const movedMonsterPositions = (monsters) => monsters.map(monster => {
-      const movement = movements.find(m =>
-        m.from[0] === monster.row && m.from[1] === monster.col);
-      return movement ? { ...monster, row: movement.to[0], col: movement.to[1] } : monster;
-    });
-    const visualState = view => ({
-      ...view, playerRow: destination[0], playerCol: destination[1],
-      monsters: movedMonsterPositions(view.monsters),
-      hasKey: game.hasKey, keyDiscovered:game.keyDiscovered, lumenPos: game.lumenPos, lumenDiscovered:game.lumenDiscovered,
-    });
-    if (!cascadeFrames.length) {
-      const view = monsterEvent?.before || snapshotBoard(game);
-      renderBoard(visualState(view), {
-        heroFrom: game.animationHeroFrom,
-        monsterMovements: movements,
-      });
-      await wait(280);
-    }
-    let firstFrame = true;
-    for (const frame of cascadeFrames) {
-      if (!isActive()) return;
-      await playMatchFrame(frame, visualState, {
-        heroFrom: firstFrame ? game.animationHeroFrom : null,
-        monsterMovements: firstFrame ? movements : null,
-      });
-      firstFrame = false;
-    }
-  }
   if (!isActive()) return;
-  if (damageTaken > (attackEvent?.retaliationDamage ?? 0)) {
-    flash("enemy-hit");
-    if (game.gameOver) {
-      await wait(180);
-      if (!isActive()) return;
-    }
-  }
   matchFxEl.replaceChildren();
   animating = false;
   render();
@@ -2300,13 +2353,24 @@ boardEl.addEventListener("pointerup", (event) => {
   if (moved && game.lastMoveStarved) flash("starving");
   else if (!moved && game.lastMoveBlocked) flash("blocked");
   else if (!moved) flash("invalid");
-  if (moved) void playCascadeAnimation(game.animationEvents, game.stats.turnLog.at(-1).damageTaken);
+  if (moved) void playCascadeAnimation(game.animationEvents);
   else render();
 });
 
 boardEl.addEventListener("pointercancel", () => { pointerStart = null; });
 boardEl.addEventListener("contextmenu", (event) => event.preventDefault());
-newGameBtn.addEventListener("click", resetGame);
+const restartDialog = document.querySelector("#restart-dialog");
+newGameBtn.addEventListener("click", () => {
+  if (game.gameOver || game.gameWon) {
+    resetGame();
+    return;
+  }
+  restartDialog.returnValue = "cancel";
+  restartDialog.showModal();
+});
+restartDialog.addEventListener("close", () => {
+  if (restartDialog.returnValue === "restart") resetGame();
+});
 const helpDialog = document.querySelector("#help-dialog");
 const helpTitle = document.querySelector("#help-title");
 const helpRules = document.querySelector("#help-rules");
