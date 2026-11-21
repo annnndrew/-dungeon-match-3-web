@@ -17,6 +17,7 @@
      Purple remains the primary Magic color; mint is a secondary accent. */
   --bg: #102f29;         /* deep pine */
   --panel: #254438;
+  --prompt-bg: #0e271f;
   --text: #f2e8d2;       /* warm ivory */
   --muted: #b8c7b4;
   --floor: #344d3c;      /* moss */
@@ -58,7 +59,7 @@ button { font: inherit; }
   border-radius: 999px;
   display: grid;
   place-items: center;
-  background: #0e271f;
+  background: var(--prompt-bg);
   text-align: center;
   font-size: clamp(10px, 2.65vw, 13px);
   line-height: 1.25;
@@ -245,6 +246,10 @@ button { font: inherit; }
 .passage-mark small { font-size: clamp(6px, 1.75vw, 9px); font-weight: 800; text-transform: uppercase; }
 .tile.entrance-tile { background: #284a41; border: 1px solid #9abdb3; }
 .tile.exit-tile { background: #4a432b; border: 1px solid var(--gold); }
+.tile.stairway-tile:is(.entrance-tile, .exit-tile) { background: var(--prompt-bg); }
+.tile.heat.stairway-tile:is(.entrance-tile, .exit-tile) {
+  background: linear-gradient(rgba(185, 38, 66, var(--heat-alpha)), rgba(185, 38, 66, var(--heat-alpha))), var(--prompt-bg);
+}
 .tile.hero .passage-mark > span { opacity: .35; }
 .tile.hero:is(.entrance-tile,.exit-tile) .hero-mark { padding-bottom: 8px; font-size: clamp(20px, 6.5vw, 33px); }
 /* A subtle heat map replaces threat outlines. Each adjacent monster adds
@@ -370,6 +375,20 @@ button { font: inherit; }
   margin-bottom:10px; filter:drop-shadow(0 1px 1px #07120a); }
 .match-glyph { font-weight: 700; }
 .stat-icon.match-glyph { display: grid; place-items: center; font-size: clamp(25px, 8vw, 42px); line-height: 1; }
+.stat-label {
+  position: absolute;
+  top: 3px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: clamp(8px, 2.5vw, 12px);
+  line-height: 1;
+  font-weight: 800;
+  color: var(--text);
+}
+.stat-tile:has(.stat-label) { padding-top: 12px; }
+.stat-tile:has(.stat-label) .stat-icon { width: clamp(24px, 8vw, 40px); height: clamp(24px, 8vw, 40px); font-size: clamp(23px, 7vw, 36px); }
+.stat-magic .cast-indicator, .stat-magic .attack-boost { top: 15px; }
 .stat-icon svg { display:block; width:100%; height:100%; }
 .stat-tile .stat-number { position:absolute; bottom:3px; right:5px; font-size:clamp(12px,3.8vw,17px);
   line-height:1; font-weight:900; font-variant-numeric:tabular-nums; color:#fff1d9;
@@ -442,6 +461,7 @@ button { font: inherit; }
     <div class="hud stats-hud">
       <div class="primary-stats" aria-label="Health, moves, magic and objectives">
         <button id="spatula-button" class="stat-tile stat-magic" type="button" disabled aria-label="Magic: 2 attack, 0 of 9 charge">
+          <span class="stat-label">Magic</span>
           <span class="stat-icon match-glyph" data-resource="bombs" aria-hidden="true"></span>
           <span class="cast-indicator" aria-hidden="true">CAST</span>
           <span class="attack-boost" id="attack-boost" aria-hidden="true">+0</span>
@@ -449,10 +469,12 @@ button { font: inherit; }
           <span class="stat-number attack-number"><span id="attack-count">2</span> <small>ATK</small></span>
         </button>
         <div class="stat-tile stat-moves" id="moves-tile" role="img" aria-label="30 moves">
+          <span class="stat-label">Moves</span>
           <span class="stat-icon match-glyph" data-resource="food" aria-hidden="true"></span>
           <span class="stat-number" id="move-count">30</span>
         </div>
         <div class="stat-tile stat-health" id="health-tile" role="img" aria-label="9 of 9 health">
+          <span class="stat-label">Health</span>
           <span class="stat-icon match-glyph" data-resource="health" aria-hidden="true"></span>
           <span class="stat-number" id="health-count">9/9</span>
         </div>
@@ -494,7 +516,7 @@ button { font: inherit; }
       <div id="spell-panel" class="results hidden" role="dialog" aria-modal="true" aria-label="Choose a spell"></div>
     </section>
 
-    <footer class="hud bottom-hud"><div id="version">Reset 4.2</div></footer>
+    <footer class="hud bottom-hud"><div id="version">Reset 4.3</div></footer>
   </main>
   <dialog id="restart-dialog" class="results-panel" aria-labelledby="restart-title" aria-describedby="restart-message">
     <h2 id="restart-title">New game</h2>
@@ -518,9 +540,9 @@ button { font: inherit; }
         <dt><span data-resource="health" aria-hidden="true"></span></dt><dd><strong>Health.</strong> Recover lost health, up to 9.</dd>
         <dt><span data-resource="bombs" aria-hidden="true"></span></dt><dd><strong>Magic.</strong> Tap the Magic icon at 9/9 to pick a spell.</dd>
         <dt><span data-resource="gold" aria-hidden="true"></span></dt><dd><strong>Gold.</strong> Collect coins. Game Over lists the gold you matched.</dd>
-        <dt><span data-resource="monster" aria-hidden="true"></span></dt><dd><strong>Summoning.</strong> A match summons a level-appropriate monster after your move. A match of five or more summons two.</dd>
+        <dt><span data-resource="monster" aria-hidden="true"></span></dt><dd><strong>Summoning.</strong> Matches of three, four, or five earn 1, 2, or 5 summon points. Every two points summon a level-appropriate monster after your move.</dd>
         <dt aria-hidden="true">@</dt><dd><strong>Hero.</strong> Your position on the board.</dd>
-        <dt aria-hidden="true">2</dt><dd><strong>Monster.</strong> The number shows its remaining health. Guards start with 1–3 HP and attack cardinally. Hunters start with 3–5 HP and attack all eight neighbors through open space.</dd>
+        <dt aria-hidden="true">2</dt><dd><strong>Monster.</strong> The number shows its remaining health. Both types start with 1–3 HP on level 1, 2–4 on level 2, and 3–5 on level 3. Guards attack cardinally. Hunters also attack diagonally within rooms.</dd>
         <dt aria-hidden="true">K / S</dt><dd><strong>Key / Santa.</strong> Collect the objective before taking the exit.</dd>
         <dt><span class="present-icon" aria-hidden="true"></span></dt><dd><strong>Present.</strong> Optional score bonus after it’s revealed.</dd>
         <dt><span class="door" aria-hidden="true"></span></dt><dd><strong>Enter / Exit.</strong> The doors into and out of the dungeon.</dd>
@@ -559,9 +581,11 @@ const CONFIG = {
   STARTING_FOOD: 30,
   MAX_MOVES: 60,
   STAGE_COUNT: 3,
-  SUMMON_POINTS_PER_EXTRA_MONSTER: 2,
+  SUMMON_MATCHES_PER_SPAWN: 2,
+  MONSTER_MIN_HP: 1,
+  MONSTER_MAX_HP: 3,
   STORAGE_CAP: 9,
-  MONSTER_START_COUNTS: { 1:3, 2:3, 3:5 },
+  MONSTER_START_COUNTS: { 1:3, 2:3, 3:6 },
   BASE_ATTACK_DAMAGE: 2,
   MONSTER_SIGHT_RADIUS: 3,
   MONSTER_MEMORY_TURNS: 1,
@@ -811,7 +835,7 @@ function matchSummary(state) {
 }
 
 function runData(state) {
-  return {version:"4.2",outcome:state.gameWon ? "rescued" : state.gameOverReason || "in-progress",
+  return {version:"4.3",outcome:state.gameWon ? "rescued" : state.gameOverReason || "in-progress",
     stage:state.stage,alarmActive:state.alarmActive,keyDiscovered:state.keyDiscovered,lumenDiscovered:state.lumenDiscovered,health:state.hp,resources:{...state.resources},score:scoreBreakdown(state),
     matches:matchSummary(state),stats:state.stats};
 }
@@ -842,7 +866,7 @@ function downloadRunData(state) {
   const link=document.createElement("a");
   const stamp=new Date().toISOString().replace(/[:.]/g,"-");
   link.href=url;
-  link.download=`dungeon-match3-v4.2-${state.gameWon ? "rescued" : state.gameOverReason || "run"}-${stamp}.json`;
+  link.download=`dungeon-match3-v4.3-${state.gameWon ? "rescued" : state.gameOverReason || "run"}-${stamp}.json`;
   try {
     document.body.appendChild(link);
     link.click();
@@ -955,8 +979,10 @@ function grantRunReward(state, itemType, runLength) {
     return;
   }
   if (itemType === "monster") {
-    // Every monster match summons a level-appropriate enemy. A five-or-longer run summons two.
-    state.pendingSpawns += Math.max(1, Math.floor(gained / CONFIG.SUMMON_POINTS_PER_EXTRA_MONSTER));
+    // Summon progress carries between matches and stages.
+    state.summonProgress += gained;
+    state.pendingSpawns += Math.floor(state.summonProgress / CONFIG.SUMMON_MATCHES_PER_SPAWN);
+    state.summonProgress %= CONFIG.SUMMON_MATCHES_PER_SPAWN;
     return;
   }
   if(itemType === "bombs") {
@@ -1033,7 +1059,7 @@ function placeLumenstone(state,rng=defaultRng) {
   return !!state.lumenPos;
 }
 
-function spawnMonster(state, rng = defaultRng, {type: forcedType = null} = {}) {
+function spawnMonster(state, rng = defaultRng) {
   const candidates = [];
   for (let r = 0; r < CONFIG.BOARD_ROWS; r++) {
     for (let c = 0; c < CONFIG.BOARD_COLS; c++) {
@@ -1047,10 +1073,9 @@ function spawnMonster(state, rng = defaultRng, {type: forcedType = null} = {}) {
   }
   if (!candidates.length) return false;
   const [row,col] = choice(candidates, rng);
-  const type = forcedType ?? choice(MONSTER_STAGE_POOLS[state.stage] || MONSTER_STAGE_POOLS[1], rng);
-  const definition = MONSTER_TYPES[type];
-  const monster = { row, col, type,
-    hp: randintInclusive(definition.minHp, definition.maxHp, rng),
+  const monster = { row, col,
+    hp: randintInclusive(CONFIG.MONSTER_MIN_HP, CONFIG.MONSTER_MAX_HP, rng) + (state.stage - 1),
+    type: choice(MONSTER_STAGE_POOLS[state.stage] || MONSTER_STAGE_POOLS[1], rng),
     aggro: false, lastSeen: null, memory: 0, seesPlayer: false };
   state.monsters.push(monster);
   if (state.alarmActive || monsterCanSeePlayer(state,monster)) alertMonster(state,monster);
@@ -1060,13 +1085,13 @@ function spawnMonster(state, rng = defaultRng, {type: forcedType = null} = {}) {
 // Types describe capabilities; AI and rendering consume the same definitions.
 // Add future monsters here, then give them a weight in MONSTER_STAGE_POOLS.
 const MONSTER_TYPES = {
-  basic: { name: "Guard", minHp: 1, maxHp: 3, attack: "cardinal", symbol: "+", damage: 1 },
-  advanced: { name: "Hunter", minHp: 3, maxHp: 5, attack: "eight", symbol: "✳︎", damage: 1 },
+  basic: { name: "Guard", attack: "cardinal", symbol: "+", damage: 1 },
+  advanced: { name: "Hunter", attack: "eight", symbol: "✳︎", damage: 1 },
 };
 const MONSTER_STAGE_POOLS = {
   1: ["basic"],
   2: ["basic", "basic", "advanced"],
-  3: ["basic", "advanced"],
+  3: ["basic", "advanced", "advanced"],
 };
 
 function monsterType(monster) {
@@ -1108,7 +1133,13 @@ function monsterCanAttack(state, monster, row, col) {
   if(monster.frozenTurns>0)return false;
   const dr=Math.abs(monster.row-row), dc=Math.abs(monster.col-col);
   if (Math.max(dr,dc)!==1 || !isWalkable(state.dungeon,row,col)) return false;
-  if (dr && dc && monsterType(monster).attack !== "eight") return false;
+  if (dr && dc) {
+    if (monsterType(monster).attack !== "eight") return false;
+    // Only room interiors allow diagonal attacks. Doors, halls and stairs
+    // always restrict monsters to cardinal attacks, even for advanced types.
+    const room=roomIndex(state.dungeon,monster.row,monster.col);
+    if (room<0 || roomIndex(state.dungeon,row,col)!==room) return false;
+  }
   return hasLineOfSight(state.dungeon,monster.row,monster.col,row,col);
 }
 
@@ -1501,6 +1532,7 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null, stag
     roomsExplored: 0,
     keysCollected: 0,
     stageLumenCollected: false,
+    summonProgress: 0,
     dungeon: layout,
     itemGrid: itemGrid ? itemGrid.map((row, r) => row.map((item, c) =>
       (r === layout.entrancePos[0] && c === layout.entrancePos[1]) ||
@@ -1571,12 +1603,7 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null, stag
   state.keyPos = choice(keyCandidates,rng);
   placeLumenstone(state,rng);
   discoverObjective(state);
-  const openingCount = CONFIG.MONSTER_START_COUNTS[stage];
-  const hunters = stage === 3 ? randintInclusive(1, 3, rng) : 0;
-  for (let i = 0; i < openingCount; i++) {
-    const type = stage === 3 ? (i < hunters ? "advanced" : "basic") : null;
-    spawnMonster(state, rng, {type});
-  }
+  for (let i = 0; i < CONFIG.MONSTER_START_COUNTS[stage]; i++) spawnMonster(state, rng);
   // One hidden optional lumenstone exists from the start of every stage.
   if (itemGrid) {
     // Custom or restored boards may already contain natural three-in-a-row matches.
@@ -1598,6 +1625,7 @@ function advanceStage(state, rng = defaultRng) {
   const next = newGame({rng, stage: state.stage + 1});
   const persistent = {
     resources: {...state.resources}, hp: state.hp, stats: state.stats,
+    summonProgress: state.summonProgress,
     stagesCompleted: state.stagesCompleted + 1,
     keysCollected: state.keysCollected + 1,
     roomsExplored: state.roomsExplored + Math.max(0,state.visitedRooms.size-1),
@@ -2121,6 +2149,7 @@ function renderBoard(view = game, { matched = null, dropDistances = null,
       if (isEntrance || isExit) {
         tile.classList.add(isEntrance ? "entrance-tile" : "exit-tile");
         const isDoor = isEntrance ? view.stage === 1 : view.stage === CONFIG.STAGE_COUNT;
+        if (!isDoor) tile.classList.add("stairway-tile");
         const label = isEntrance ? (isDoor ? "Enter" : "Up") : (isDoor ? "Exit" : "Down");
         tile.title = label;
         tile.setAttribute("aria-label", label);
@@ -2176,7 +2205,7 @@ function renderBoard(view = game, { matched = null, dropDistances = null,
         pattern.className="monster-pattern";
         pattern.textContent=definition.symbol;
         mark.appendChild(pattern);
-        tile.title=`${definition.name}: ${monster.hp} HP; ${definition.attack === "eight" ? "eight-way" : "cardinal"} attacks; ${monster.aggro ? "pursuing" : "wandering"}`;
+        tile.title=`${definition.name}: ${monster.hp} HP; ${definition.attack === "eight" ? "eight-way in rooms" : "cardinal"} attacks; ${monster.aggro ? "pursuing" : "wandering"}`;
         tile.appendChild(mark);
       }
       if (isHero) {
