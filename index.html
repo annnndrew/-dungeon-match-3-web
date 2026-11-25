@@ -7,15 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="theme-color" content="#102f29" />
   <title>Mrs. Claus’s Roguelike MATCH THREE</title>
-  <link rel="preload" href="assets/fonts/DejaVuSansMono.woff" as="font" type="font/woff" crossorigin />
   <style>
-@font-face {
-  font-family: "Dungeon DejaVu";
-  src: url("assets/fonts/DejaVuSansMono.woff") format("woff");
-  font-weight: 400;
-  font-style: normal;
-  font-display: block;
-}
 #spell-panel { z-index:25; }
 #spell-panel button { margin:5px 0; }
 #return-spells { color:#f4f0e5;border:1px solid #c4a2e8;background:#473459;padding:9px;border-radius:7px; }
@@ -43,7 +35,7 @@
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: "Dungeon DejaVu"; font-synthesis: none; font-variant-emoji: text; }
+html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
 body { min-height: 100dvh; overscroll-behavior: none; }
 button { font: inherit; }
 
@@ -143,6 +135,7 @@ button { font: inherit; }
   line-height: 1;
   pointer-events: none;
 }
+.tile .resource.symbol-star { font-size: clamp(23px, 7.7vw, 38px); }
 .tile .resource.falling {
   position: relative;
   z-index: 6;
@@ -185,24 +178,80 @@ button { font: inherit; }
   from { transform: translate(var(--monster-from-x),var(--monster-from-y)); }
   to { transform: translate(0,0); }
 }
+.stairs {
+  display: inline-block;
+  width: 1.3em;
+  height: 1em;
+  background: currentColor;
+  clip-path: polygon(4% 78%, 24% 78%, 24% 53%, 46% 53%, 46% 29%, 68% 29%, 68% 5%,
+    96% 5%, 96% 25%, 82% 25%, 82% 49%, 60% 49%, 60% 73%, 38% 73%, 38% 98%, 4% 98%);
+}
+.stairs-up { color: #b4d7ce; }
+.stairs-down { color: var(--gold); transform: scaleX(-1); }
+.door, .present-icon {
+  display: inline-block;
+  position: relative;
+  width: .78em;
+  height: 1em;
+}
+.door {
+  color: inherit;
+  border: 1px solid currentColor;
+  border-radius: 50% 50% 2px 2px / 28% 28% 2px 2px;
+  background: #3a2b24;
+}
+.door::after {
+  content: "";
+  position: absolute;
+  right: 17%;
+  top: 53%;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.present-icon {
+  height: .72em;
+  width: .93em;
+  border: 1px solid #f0cf8c;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent 39%, #f0cf8c 39% 61%, transparent 61%),
+    linear-gradient(0deg, #ab354b 64%, #f0cf8c 64% 77%, #ab354b 77%);
+}
+.present-icon::before {
+  content: "";
+  position: absolute;
+  left: 20%;
+  right: 20%;
+  top: -.22em;
+  height: .23em;
+  border: 1px solid #f0cf8c;
+  border-radius: 4px 4px 1px 1px;
+}
 .tile .passage-mark {
   position: absolute;
   inset: 0;
   display: grid;
-  place-items: center;
+  justify-items: center;
+  grid-template-rows: 1fr auto;
+  align-items: center;
+  padding-bottom: 2px;
+  font-size: clamp(13px, 4vw, 21px);
+  line-height: 1;
   pointer-events: none;
   z-index: 2;
-  font-size: clamp(23px, 7vw, 36px);
 }
-.tile.entrance-tile { background: #284a41; border: 1px solid #9abdb3; }
-.tile.exit-tile { background: #4a432b; border: 1px solid var(--gold); }
 .tile.entrance-tile .passage-mark { color: #b4d7ce; }
 .tile.exit-tile .passage-mark { color: var(--gold); }
+.passage-mark small { font-size: clamp(6px, 1.75vw, 9px); font-weight: 800; text-transform: uppercase; }
+.tile.entrance-tile { background: #284a41; border: 1px solid #9abdb3; }
+.tile.exit-tile { background: #4a432b; border: 1px solid var(--gold); }
 .tile.stairway-tile:is(.entrance-tile, .exit-tile) { background: var(--prompt-bg); }
 .tile.heat.stairway-tile:is(.entrance-tile, .exit-tile) {
   background: linear-gradient(rgba(185, 38, 66, var(--heat-alpha)), rgba(185, 38, 66, var(--heat-alpha))), var(--prompt-bg);
 }
-.tile.hero .passage-mark { opacity: .3; }
+.tile.hero .passage-mark > span { opacity: .35; }
+.tile.hero:is(.entrance-tile,.exit-tile) .hero-mark { padding-bottom: 8px; font-size: clamp(20px, 6.5vw, 33px); }
 /* A subtle heat map replaces threat outlines. Each adjacent monster adds
    another 20%-opacity red layer: 1 = 20%, 2 = 36%, 3 = 48.8%, etc.
    Tint is painted behind resources, markers, and sprites for readability. */
@@ -247,6 +296,7 @@ button { font: inherit; }
 .tile .monster-mark, .tile .key-mark, .tile .lumen-mark { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 900; font-size: clamp(20px, 7vw, 33px); z-index: 3; pointer-events: none; }
 .tile .lumen-mark { color: #f2e8d2; font-size: clamp(25px, 8vw, 40px); text-shadow: 0 0 8px #f0b83f, 0 0 3px #fff; background:rgba(105,78,30,.45); border:1px solid rgba(240,184,63,.65); border-radius:3px; }
 .tile .monster-mark { color: #fff5e9; background: #505b63; border: 2px solid #a4b4b4; border-radius: 3px; }
+.tile .monster-pattern { position:absolute; right:1px; bottom:0; font-size:11px; line-height:12px; color:#fff5df; pointer-events:none; }
 .tile.aggro .monster-mark { background: #a83d42; color: #fff5df; border-color: #efc778; box-shadow: inset 0 0 0 1px #efc778; }
 .tile .key-mark { color: #1b2d25; background: var(--gold); border: 2px solid #f2e8d2; border-radius: 3px; }
 .tile.monster-tile .resource, .tile.key-tile .resource, .tile.lumen-tile .resource { visibility: hidden; }
@@ -304,7 +354,7 @@ button { font: inherit; }
 .tile.frozen-dark .monster-mark { background:#143e91;border-color:#5193e3;color:#e9f3ff;box-shadow:none; }
 .tile.frozen-light .monster-mark { background:#77b5df;border-color:#d1edff;color:#102a4d;box-shadow:none; }
 
-/* Four independent primary stats, with compact objective indicators below. */
+/* November 18 mockup: three equal stat cards, then two narrower objectives. */
 .top-hud { min-height: 40px; }
 .game-title { display:flex; flex-direction:column; justify-content:center; gap:2px; min-width:0;
   font-size:clamp(10px,2.8vw,14px); line-height:1.14; letter-spacing:.025em; color:#f3e7d0; }
@@ -313,15 +363,18 @@ button { font: inherit; }
 .stats-hud { display:flex; flex-direction:column; gap:6px; }
 .primary-stats {
   display:grid;
-  grid-template-columns:repeat(4, minmax(0, 1fr));
+  grid-template-columns:repeat(3, minmax(0, 1fr)) minmax(0, .15fr) repeat(2, minmax(0, .71fr));
   gap:clamp(4px,1.4vw,8px);
   padding-inline:2px;
 }
+#key-tile { grid-column:5; }
 .stat-tile { position:relative; min-width:0; height:clamp(53px,18.1vw,93px); border:2px solid var(--tile-border);
   background:transparent; border-radius:3px; display:flex; justify-content:center; align-items:center;
   color:var(--tile-border); padding:4px; overflow:hidden; }
 .stat-icon { width:clamp(31px,9.6vw,48px); height:clamp(31px,9.6vw,48px); display:block; flex:none;
   margin-bottom:10px; filter:drop-shadow(0 1px 1px #07120a); }
+.match-glyph { font-weight: 700; }
+.stat-icon.match-glyph { display: grid; place-items: center; font-size: clamp(25px, 8vw, 42px); line-height: 1; }
 .stat-label {
   position: absolute;
   top: 3px;
@@ -335,13 +388,17 @@ button { font: inherit; }
 }
 .stat-tile:has(.stat-label) { padding-top: 12px; }
 .stat-tile:has(.stat-label) .stat-icon { width: clamp(24px, 8vw, 40px); height: clamp(24px, 8vw, 40px); font-size: clamp(23px, 7vw, 36px); }
-.stat-magic .cast-indicator, .stat-attack .attack-boost { top: 15px; }
+.stat-magic .cast-indicator, .stat-magic .attack-boost { top: 15px; }
+.stat-icon svg { display:block; width:100%; height:100%; }
 .stat-tile .stat-number { position:absolute; bottom:3px; right:5px; font-size:clamp(12px,3.8vw,17px);
   line-height:1; font-weight:900; font-variant-numeric:tabular-nums; color:#fff1d9;
   text-shadow:0 1px 2px #0d1d11; white-space:nowrap; }
 .stat-tile .stat-number small { font-size:.61em; font-weight:700; color:var(--tile-border); }
 .stat-magic { --tile-border:var(--magic); width:100%; cursor:default; appearance:none; font:inherit; }
 .stat-magic:disabled { opacity:1; }
+.stat-magic .magic-charge { position:absolute; bottom:4px; left:4px; font-size:clamp(9px,2.45vw,11px);
+  font-weight:800; line-height:1; color:var(--magic-bright); font-variant-numeric:tabular-nums; }
+.stat-magic .attack-number { color:#fff5d9; }
 .stat-magic .cast-indicator { position:absolute; top:3px; right:4px; font-size:clamp(8px,2vw,10px);
   font-weight:900; letter-spacing:.05em; color:#fff2bc; display:none; }
 .stat-magic.ready { cursor:pointer; background:#3b304a; border-color:var(--magic-bright);
@@ -357,71 +414,42 @@ button { font: inherit; }
 @media (prefers-reduced-motion: reduce) {
   .stat-magic.ready { animation:none; }
 }
-.stat-attack.boosted .attack-number { color:var(--mint); transform:scale(1.14); transform-origin:bottom right; }
-.stat-attack .attack-boost { position:absolute; top:3px; left:4px; font-size:clamp(8px,2.2vw,11px);
+.stat-magic.boosted .attack-number { color:var(--mint); transform:scale(1.14); transform-origin:bottom right; }
+.stat-magic .attack-boost { position:absolute; top:3px; left:4px; font-size:clamp(8px,2.2vw,11px);
   font-weight:900; color:var(--mint); display:none; }
-.stat-attack.boosted .attack-boost { display:block; }
+.stat-magic.boosted .attack-boost { display:block; }
 .stat-moves { --tile-border:var(--text); }
 .stat-health { --tile-border:var(--health); }
+.stat-objective { --tile-border:#397053; border:3px solid var(--tile-border); }
+.stat-objective .stat-icon { width:clamp(27px,8.5vw,43px); height:clamp(27px,8.5vw,43px);
+  margin-bottom:2px; opacity:.40; filter:grayscale(1) sepia(.35) brightness(.70); }
+.stat-objective .objective-question { position:absolute; right:5px; bottom:3px; color:#b0b7a2;
+  font-size:clamp(14px,4.2vw,20px); font-weight:900; }
+.stat-objective.collected { --tile-border:var(--gold); border-color:var(--gold); background:#344b31; }
+.stat-objective.collected .stat-icon { opacity:1; filter:drop-shadow(0 0 5px #f6e4a077); }
+.stat-objective.collected .objective-question { display:none; }
+.stat-objective.santa-collected { border-color:var(--health); background:#3f3b2e; }
+.stat-objective.santa-collected .stat-icon { filter:drop-shadow(0 0 5px #fff3d2aa); }
 .secondary-stats { display:flex; gap:clamp(8px,3vw,16px); align-items:center;
   min-height:17px; padding-inline:2px; font-size:clamp(10px,2.8vw,13px);
   color:var(--muted); white-space:nowrap; }
 .secondary-stats b { color:#f3e5c5; font-weight:900; }
 .secondary-stats .score-text { color:var(--gold); margin-left:auto; }
 @media(max-width:350px) {
-  .stat-tile { border-width:1.5px; }
+  .stat-tile:not(.stat-objective) { border-width:1.5px; }
   .header-actions { gap:6px; }
   .stat-icon { margin-bottom:9px; }
   .stat-tile .stat-number { right:3px; bottom:3px; }
+  .stat-magic .magic-charge { left:3px; }
   .game-title { letter-spacing:-.02em; }
 }
 @media (orientation:landscape) and (max-height:540px) {
   .stat-tile { height:60px; }
   .stat-icon { height:30px; width:30px; }
 }
-
-.game-glyph, .tile .resource, .hero-mark, .key-mark, .lumen-mark,
-.monster-letter, .hp-dots, .reward-pop, .passage-mark {
-  font-family: "Dungeon DejaVu";
-  font-style: normal;
-  font-weight: 400 !important;
-  font-synthesis: none;
-  font-variant-emoji: text;
-  line-height: 1;
-}
-.stat-attack { --tile-border: var(--gingerbread); }
-.stat-attack .stat-icon { color: var(--gingerbread); }
-.stat-icon.game-glyph { display: grid; place-items: center; font-size: clamp(25px, 8vw, 40px); }
-.stat-label { font-size: clamp(9px, 2.6vw, 13px); }
-.stat-tile { height: clamp(74px, 20vw, 100px); }
-.stat-icon { margin-bottom: 3px; }
-.stat-magic .cast-indicator { top: 16px; right: 3px; }
-.stat-attack .attack-boost { top: 16px; left: 3px; }
-.objective-row { display: flex; align-items: center; gap: 12px; padding-inline: 2px; min-height: 25px; font-size: clamp(10px, 2.8vw, 13px); }
-.objective-stat, .present-stat { display: flex; align-items: center; gap: 5px; }
-.icon-guide .game-glyph { display: inline-grid; place-items: center; }
-.objective-row .game-glyph { font-size: 21px; display: inline-grid; place-items: center; }
-.objective-stat { color: var(--muted); }
-.objective-stat .game-glyph { opacity: .4; }
-.objective-stat.collected { color: var(--gold); }
-.objective-stat.collected .game-glyph { opacity: 1; }
-.objective-stat.santa-collected { color: var(--health); }
-.present-stat { color: var(--gold); margin-left: auto; }
-.tile .monster-mark { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 0; padding: 1px; }
-.monster-letter { display: grid; place-items: center; font-size: clamp(17px, 5.4vw, 28px); height: 1em; }
-.hp-dots { display: flex; justify-content: center; align-items: center; height: 7px; font-size: clamp(8px, 2.3vw, 10px); letter-spacing: 0; }
-.hp-dots span { display: block; line-height: 1; }
-.tile .resource, .hero-mark, .key-mark, .lumen-mark { display: grid; place-items: center; }
-.tile .lumen-mark { font-size: clamp(23px, 7vw, 36px); }
-#font-status { margin: 24px; color: var(--text); }
-.font-loading #app { visibility: hidden; }
-@media (orientation: landscape) and (max-height: 540px) {
-  .stat-tile { height: 70px; }
-}
   </style>
 </head>
-<body class="font-loading">
-  <p id="font-status" role="status">Loading game font…</p>
+<body>
   <main id="app">
     <header class="hud top-hud">
       <div class="game-title"><span>Mrs. Claus’s Roguelike</span><span>MATCH THREE</span></div>
@@ -431,43 +459,49 @@ button { font: inherit; }
       </div>
     </header>
     <div class="hud stats-hud">
-      <div class="primary-stats" aria-label="Attack, magic, turns and health">
-        <div id="attack-tile" class="stat-tile stat-attack" role="img" aria-label="2 attack strength">
-          <span class="stat-label">Attack</span>
-          <span class="stat-icon game-glyph" data-glyph="attack" aria-hidden="true"></span>
-          <span class="attack-boost" id="attack-boost" aria-hidden="true">+0</span>
-          <span class="stat-number attack-number" id="attack-count">2</span>
-        </div>
-        <button id="spatula-button" class="stat-tile stat-magic" type="button" disabled aria-label="Magic, 0 of 9 charge">
+      <div class="primary-stats" aria-label="Health, moves, magic and objectives">
+        <button id="spatula-button" class="stat-tile stat-magic" type="button" disabled aria-label="Magic: 2 attack, 0 of 9 charge">
           <span class="stat-label">Magic</span>
-          <span class="stat-icon game-glyph" data-resource="bombs" aria-hidden="true"></span>
+          <span class="stat-icon match-glyph" data-resource="bombs" aria-hidden="true"></span>
           <span class="cast-indicator" aria-hidden="true">CAST</span>
-          <span class="stat-number" id="magic-count">0/9</span>
+          <span class="attack-boost" id="attack-boost" aria-hidden="true">+0</span>
+          <span class="magic-charge" id="magic-count">0/9</span>
+          <span class="stat-number attack-number"><span id="attack-count">2</span> <small>ATK</small></span>
         </button>
-        <div class="stat-tile stat-moves" id="moves-tile" role="img" aria-label="30 turns remaining">
-          <span class="stat-label">Turns</span>
-          <span class="stat-icon game-glyph" data-resource="food" aria-hidden="true"></span>
+        <div class="stat-tile stat-moves" id="moves-tile" role="img" aria-label="30 moves">
+          <span class="stat-label">Moves</span>
+          <span class="stat-icon match-glyph" data-resource="food" aria-hidden="true"></span>
           <span class="stat-number" id="move-count">30</span>
         </div>
         <div class="stat-tile stat-health" id="health-tile" role="img" aria-label="9 of 9 health">
           <span class="stat-label">Health</span>
-          <span class="stat-icon game-glyph" data-resource="health" aria-hidden="true"></span>
+          <span class="stat-icon match-glyph" data-resource="health" aria-hidden="true"></span>
           <span class="stat-number" id="health-count">9/9</span>
         </div>
+        <div class="stat-tile stat-objective" id="key-tile" role="img" aria-label="Key not collected">
+          <span class="stat-icon" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="21" cy="24" r="11" stroke="#edc57e" stroke-width="8"/>
+            <path d="M29 32 51 53M42 44l8-8M47 49l7-7" stroke="#edc57e" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg></span>
+          <span class="objective-question" aria-hidden="true">?</span>
+        </div>
+        <div class="stat-tile stat-objective" id="santa-tile" role="img" aria-label="Santa not rescued">
+          <span class="stat-icon" aria-hidden="true"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 28C17 8 35 5 51 24L43 32 12 28Z" fill="#c82d44" stroke="#fff3d9" stroke-width="2"/>
+            <circle cx="51" cy="24" r="5" fill="#fff8e9"/>
+            <rect x="10" y="25" width="38" height="10" rx="5" fill="#fff8e9"/>
+            <ellipse cx="30" cy="42" rx="17" ry="18" fill="#fff5e6"/>
+            <ellipse cx="30" cy="37" rx="11" ry="10" fill="#f1bf9d"/>
+            <circle cx="26" cy="36" r="1.7" fill="#273628"/><circle cx="35" cy="36" r="1.7" fill="#273628"/>
+            <ellipse cx="30" cy="43" rx="4" ry="3" fill="#e8877b"/>
+            <path d="M20 46Q30 57 40 46Q38 61 30 61Q22 61 20 46Z" fill="#fff"/>
+          </svg></span>
+          <span class="objective-question" aria-hidden="true">?</span>
+        </div>
       </div>
-      <div class="objective-row" aria-label="Key, Santa and presents">
-        <div class="objective-stat" id="key-tile" role="img" aria-label="Key not collected">
-          <span class="game-glyph" data-glyph="key" aria-hidden="true"></span><span>Key</span>
-        </div>
-        <div class="objective-stat" id="santa-tile" role="img" aria-label="Santa not rescued">
-          <span class="game-glyph" data-glyph="santa" aria-hidden="true"></span><span>Santa</span>
-        </div>
-        <div class="present-stat"><span class="game-glyph" data-glyph="present" aria-hidden="true"></span>
-          <span>Presents <b id="lumen-count">0/3</b></span>
-        </div>
-      </div>
-      <div class="secondary-stats" aria-label="Level and score">
+      <div class="secondary-stats" aria-label="Level, presents and score">
         <span>LEVEL <b id="level-count">1/3</b></span>
+        <span>PRESENTS <b id="lumen-count">0/3</b></span>
         <span class="score-text">SCORE <b id="score-count">0</b></span>
       </div>
     </div>
@@ -482,7 +516,7 @@ button { font: inherit; }
       <div id="spell-panel" class="results hidden" role="dialog" aria-modal="true" aria-label="Choose a spell"></div>
     </section>
 
-    <footer class="hud bottom-hud"><div id="version">Reset 4.4</div></footer>
+    <footer class="hud bottom-hud"><div id="version">Reset 4.3</div></footer>
   </main>
   <dialog id="restart-dialog" class="results-panel" aria-labelledby="restart-title" aria-describedby="restart-message">
     <h2 id="restart-title">New game</h2>
@@ -502,18 +536,18 @@ button { font: inherit; }
     </section>
     <section id="help-icons" hidden>
       <dl class="icon-guide">
-        <dt><span data-resource="food" aria-hidden="true"></span></dt><dd><strong>Turns.</strong> Refill your remaining turns. Every successful swipe spends one turn.</dd>
+        <dt><span data-resource="food" aria-hidden="true"></span></dt><dd><strong>Moves.</strong> Refill your move supply. Every successful swipe spends one Move.</dd>
         <dt><span data-resource="health" aria-hidden="true"></span></dt><dd><strong>Health.</strong> Recover lost health, up to 9.</dd>
         <dt><span data-resource="bombs" aria-hidden="true"></span></dt><dd><strong>Magic.</strong> Tap the Magic icon at 9/9 to pick a spell.</dd>
         <dt><span data-resource="gold" aria-hidden="true"></span></dt><dd><strong>Gold.</strong> Collect coins. Game Over lists the gold you matched.</dd>
         <dt><span data-resource="monster" aria-hidden="true"></span></dt><dd><strong>Summoning.</strong> Matches of three, four, or five earn 1, 2, or 5 summon points. Every two points summon a level-appropriate monster after your move.</dd>
         <dt aria-hidden="true">@</dt><dd><strong>Hero.</strong> Your position on the board.</dd>
-        <dt aria-hidden="true"><span data-glyph="guard"></span> / <span data-glyph="warrior"></span></dt><dd><strong>Guard / Warrior.</strong> Each dot underneath the character is one remaining HP. Both types start with 1–3 HP on level 1, 2–4 on level 2, and 3–5 on level 3. Guards attack cardinally. Warriors also attack diagonally within rooms.</dd>
-        <dt aria-hidden="true"><span data-glyph="key"></span> / <span data-glyph="santa"></span></dt><dd><strong>Key / Santa.</strong> Collect the objective before taking the exit.</dd>
-        <dt><span data-glyph="present" aria-hidden="true"></span></dt><dd><strong>Present.</strong> Optional score bonus after it’s revealed.</dd>
-        <dt><span data-glyph="entrance" aria-hidden="true"></span></dt><dd><strong>Enter / Up.</strong> Your entrance to this level.</dd>
-        <dt><span data-glyph="exit" aria-hidden="true"></span></dt><dd><strong>Down / Exit.</strong> Reach it with the key or Santa.</dd>
-        <dt><span data-glyph="attack" aria-hidden="true"></span></dt><dd><strong>Attack.</strong> Damage dealt when you strike a monster, including a usable cascade bonus.</dd>
+        <dt aria-hidden="true">2</dt><dd><strong>Monster.</strong> The number shows its remaining health. Both types start with 1–3 HP on level 1, 2–4 on level 2, and 3–5 on level 3. Guards attack cardinally. Hunters also attack diagonally within rooms.</dd>
+        <dt aria-hidden="true">K / S</dt><dd><strong>Key / Santa.</strong> Collect the objective before taking the exit.</dd>
+        <dt><span class="present-icon" aria-hidden="true"></span></dt><dd><strong>Present.</strong> Optional score bonus after it’s revealed.</dd>
+        <dt><span class="door" aria-hidden="true"></span></dt><dd><strong>Enter / Exit.</strong> The doors into and out of the dungeon.</dd>
+        <dt><span class="stairs stairs-up" aria-hidden="true"></span></dt><dd><strong>Up.</strong> The stairs you arrived on.</dd>
+        <dt><span class="stairs stairs-down" aria-hidden="true"></span></dt><dd><strong>Down.</strong> The stairs to the next level.</dd>
       </dl>
       <button id="show-help-rules" type="button">← How to play</button>
     </section>
@@ -527,9 +561,9 @@ const CONFIG = {
   ROOM_OPENING_MIN: 1,
   ROOM_OPENING_MAX: 3,
   ITEM_TYPES: ["food", "health", "monster", "gold", "bombs"],
-  ITEM_LABEL: { food: "\u26A1", health: "\u2665", monster: "\u2217", gold: "\u25C9", bombs: "\u2726" },
+  ITEM_LABEL: { food: "ϟ", health: "♥", monster: "✥", gold: "◉", bombs: "✦" },
   ITEM_COLOR: {
-    food: "#e67a45",       // Turns / candy-cane orange
+    food: "#e67a45",       // Moves / candy-cane orange
     health: "#d93450",     // cranberry
     monster: "#69dfa2",    // mint; summoning resource, not monster sprite
     gold: "#f0b83f",       // antique gold
@@ -801,7 +835,7 @@ function matchSummary(state) {
 }
 
 function runData(state) {
-  return {version:"4.4",outcome:state.gameWon ? "rescued" : state.gameOverReason || "in-progress",
+  return {version:"4.3",outcome:state.gameWon ? "rescued" : state.gameOverReason || "in-progress",
     stage:state.stage,alarmActive:state.alarmActive,keyDiscovered:state.keyDiscovered,lumenDiscovered:state.lumenDiscovered,health:state.hp,resources:{...state.resources},score:scoreBreakdown(state),
     matches:matchSummary(state),stats:state.stats};
 }
@@ -832,7 +866,7 @@ function downloadRunData(state) {
   const link=document.createElement("a");
   const stamp=new Date().toISOString().replace(/[:.]/g,"-");
   link.href=url;
-  link.download=`dungeon-match3-v4.4-${state.gameWon ? "rescued" : state.gameOverReason || "run"}-${stamp}.json`;
+  link.download=`dungeon-match3-v4.3-${state.gameWon ? "rescued" : state.gameOverReason || "run"}-${stamp}.json`;
   try {
     document.body.appendChild(link);
     link.click();
@@ -956,7 +990,7 @@ function grantRunReward(state, itemType, runLength) {
     if(state.resources.bombs===CONFIG.MAGIC_THRESHOLD)state.magicReady=true;
     return;
   }
-  // Turns replenish up to the starting reserve; other resources retain their caps.
+  // Moves replenish up to the starting reserve; other resources retain their caps.
   state.resources[itemType] = Math.max(state.resources[itemType],
     Math.min(itemType === "food" ? CONFIG.MAX_MOVES : CONFIG.STORAGE_CAP, state.resources[itemType] + gained));
 }
@@ -1051,8 +1085,8 @@ function spawnMonster(state, rng = defaultRng) {
 // Types describe capabilities; AI and rendering consume the same definitions.
 // Add future monsters here, then give them a weight in MONSTER_STAGE_POOLS.
 const MONSTER_TYPES = {
-  basic: { name: "Guard", attack: "cardinal", damage: 1 },
-  advanced: { name: "Warrior", attack: "eight", damage: 1 },
+  basic: { name: "Guard", attack: "cardinal", symbol: "+", damage: 1 },
+  advanced: { name: "Hunter", attack: "eight", symbol: "✳︎", damage: 1 },
 };
 const MONSTER_STAGE_POOLS = {
   1: ["basic"],
@@ -1829,17 +1863,6 @@ function swipeDirection(dx, dy, minimum = CONFIG.MIN_SWIPE) {
 
 
 
-const GLYPHS = Object.freeze({
-  entrance: "\u003C", exit: "\u003E", hero: "\u0040",
-  guard: "\u0047", warrior: "\u0057", santa: "\u0053",
-  key: "\u0138", present: "\u25A8", attack: "\u2694",
-});
-
-// FE0E requests text presentation for symbols that have emoji variants.
-function textGlyph(character) {
-  return /[\u2665\u2694\u26A1]/u.test(character) ? character + "\uFE0E" : character;
-}
-
 const boardEl = document.querySelector("#board");
 const spellPanelEl=document.querySelector("#spell-panel");
 const returnSpellsBtn=document.querySelector("#return-spells");
@@ -1847,7 +1870,6 @@ const spatulaBtn=document.querySelector("#spatula-button");
 const statusEl = document.querySelector("#status");
 const magicCountEl = document.querySelector("#magic-count");
 const attackCountEl = document.querySelector("#attack-count");
-const attackTileEl = document.querySelector("#attack-tile");
 const attackBoostEl = document.querySelector("#attack-boost");
 const movesCountEl = document.querySelector("#move-count");
 const movesTileEl = document.querySelector("#moves-tile");
@@ -1882,36 +1904,36 @@ function resetGame() {
 
 function statusText() {
   if (game.gameWon) return "SANTA RESCUED!";
-  if (game.gameOverReason === "no_moves") return "NO VALID MATCHES!";
+  if (game.gameOverReason === "no_moves") return "NO MOVES!";
   if (game.gameOverReason === "death") return "YOU DIED!";
-  if (game.gameOverReason === "starvation") return "OUT OF TURNS!";
+  if (game.gameOverReason === "starvation") return "OUT OF MOVES!";
   const damage = game.lastProximityDamage + game.lastAttackDamage;
   if (damage > 0) {
     const source = game.lastProximityDamage > 0 ? "adjacent monster" : "attack";
-    return `${game.lastEvent ? game.lastEvent + " · " : ""}♥︎ −${damage} (${source})`;
+    return `${game.lastEvent ? game.lastEvent + " · " : ""}♥ −${damage} (${source})`;
   }
   if (game.lastEvent) return game.lastEvent;
   if (isThreatened(game, game.playerRow, game.playerCol))
-    return `Danger — adjacent enemies −${adjacentMonsterCount(game, game.playerRow, game.playerCol)} ♥︎ on next move`;
+    return `⚠ Adjacent enemies: −${adjacentMonsterCount(game, game.playerRow, game.playerCol)} ♥ on next move`;
   if (game.alarmActive) return game.stage===CONFIG.STAGE_COUNT
     ? "ALARM — Santa is with you — reach the exit door!" : "ALARM — all monsters hunting — reach the stairs!";
   const objective=game.stage===CONFIG.STAGE_COUNT ? "Santa" : "the key";
-  return game.keyDiscovered ? `${objective} spotted — collect ${game.stage===CONFIG.STAGE_COUNT ? GLYPHS.santa : GLYPHS.key}!`
+  return game.keyDiscovered ? `${objective} spotted — collect ${game.stage===CONFIG.STAGE_COUNT ? "S" : "K"}!`
     : `Search the rooms for ${objective}.`;
 }
 
 function resultsTitle() {
   if (game.gameWon) return "SANTA RESCUED";
   if (game.gameOverReason === "death") return "YOU DIED";
-  if (game.gameOverReason === "starvation") return "OUT OF TURNS";
-  if (game.gameOverReason === "no_moves") return "NO VALID MATCHES";
+  if (game.gameOverReason === "starvation") return "OUT OF MOVES";
+  if (game.gameOverReason === "no_moves") return "NO MOVES";
   return "GAME OVER";
 }
 
 function gameOverCause(state) {
   switch (state.gameOverReason) {
     case "death": return state.defeatedBy ? `Killed by a ${state.defeatedBy}.` : "Killed by enemy damage.";
-    case "starvation": return "You ran out of Turns.";
+    case "starvation": return "You ran out of Moves.";
     case "no_moves": return "No legal swaps could make a match.";
     default: return "";
   }
@@ -1925,10 +1947,10 @@ function renderResults() {
   }
   const matchStats=matchSummary(game);
   const rows = CONFIG.ITEM_TYPES.map((kind) => {
-    const label = textGlyph(CONFIG.ITEM_LABEL[kind]);
+    const label = CONFIG.ITEM_LABEL[kind];
     const color = CONFIG.ITEM_COLOR[kind];
     const amount = game.stats.resourcesCollected[kind];
-    const displayName = { food: "Turns", health: "Health", monster: "Summons", gold: "Gold", bombs: "Magic" }[kind];
+    const displayName = { food: "Moves", health: "Health", monster: "Summons", gold: "Gold", bombs: "Magic" }[kind];
     return `<div><span style="color:${color};font-weight:700">${label}</span> ${displayName}: ${amount}</div>`;
   }).join("");
   const cause = gameOverCause(game);
@@ -2026,8 +2048,8 @@ function setAttackDisplay(bonus = 0) {
   const effective = CONFIG.BASE_ATTACK_DAMAGE + bonus;
   attackCountEl.textContent = effective;
   attackBoostEl.textContent = `+${bonus}`;
-  attackTileEl.classList.toggle("boosted", bonus > 0);
-  attackTileEl.setAttribute("aria-label", `${effective} attack strength${bonus ? `, including +${bonus} cascade bonus` : ""}`);
+  spatulaBtn.classList.toggle("boosted", bonus > 0);
+  spatulaBtn.setAttribute("aria-label", `Magic: ${effective} attack, ${game.resources.bombs} of ${CONFIG.MAGIC_THRESHOLD} charge${game.magicReady ? "; ready to cast" : ""}`);
 }
 
 function renderHealth(hp) {
@@ -2043,11 +2065,10 @@ function renderHud(hp = game.hp) {
       isThreatened(game, game.playerRow, game.playerCol));
   }
   movesCountEl.textContent = game.resources.food;
-  movesTileEl.setAttribute("aria-label", `${game.resources.food} turns remaining`);
+  movesTileEl.setAttribute("aria-label", `${game.resources.food} moves remaining`);
   renderHealth(hp);
   magicCountEl.textContent = `${game.resources.bombs}/${CONFIG.MAGIC_THRESHOLD}`;
   spatulaBtn.classList.toggle("ready", game.magicReady && !game.gameOver && !game.gameWon);
-  spatulaBtn.setAttribute("aria-label", `Magic, ${game.resources.bombs} of ${CONFIG.MAGIC_THRESHOLD} charge${game.magicReady ? ", ready to cast" : ""}`);
   spatulaBtn.disabled = !game.magicReady || game.gameOver || game.gameWon || animating || !!game.spellOffer;
   setAttackDisplay(0);
   // The key is per-level. On the final level the objective is Santa instead.
@@ -2064,8 +2085,7 @@ function renderHud(hp = game.hp) {
 }
 
 function paintResourceIcon(element, item) {
-  element.textContent = textGlyph(CONFIG.ITEM_LABEL[item]);
-  element.classList.add("game-glyph");
+  element.textContent = CONFIG.ITEM_LABEL[item];
   element.style.color = CONFIG.ITEM_COLOR[item];
 }
 
@@ -2114,6 +2134,7 @@ function renderBoard(view = game, { matched = null, dropDistances = null,
       if (item !== null) {
         const resource = document.createElement("span");
         resource.className = "resource";
+        if (item === "monster" || item === "bombs") resource.classList.add("symbol-star");
         if (dropDistances && dropDistances[cellKey] > 0) {
           tile.classList.add("fall-tile");
           resource.classList.add("falling");
@@ -2136,16 +2157,17 @@ function renderBoard(view = game, { matched = null, dropDistances = null,
         marker.className = "passage-mark";
         marker.setAttribute("aria-hidden", "true");
         const icon = document.createElement("span");
-        icon.className = "game-glyph";
-        icon.textContent = isEntrance ? GLYPHS.entrance : GLYPHS.exit;
-        marker.appendChild(icon);
+        icon.className = isDoor ? "door" : (isEntrance ? "stairs stairs-up" : "stairs stairs-down");
+        const caption = document.createElement("small");
+        caption.textContent = label;
+        marker.append(icon, caption);
         tile.appendChild(marker);
       }
       if (keyIsVisible(view,row,col)) {
         tile.classList.add("key-tile");
         const key = document.createElement("span");
         key.className = "key-mark";
-        key.textContent = view.stage === CONFIG.STAGE_COUNT ? GLYPHS.santa : GLYPHS.key;
+        key.textContent = view.stage === CONFIG.STAGE_COUNT ? "S" : "K";
         tile.appendChild(key);
       }
       if (lumenIsVisible(view,row,col)) {
@@ -2153,7 +2175,10 @@ function renderBoard(view = game, { matched = null, dropDistances = null,
         const stone=document.createElement("span");
         stone.className="lumen-mark";
         stone.setAttribute("aria-label", "Present");
-        stone.textContent = GLYPHS.present;
+        const icon = document.createElement("span");
+        icon.className = "present-icon";
+        icon.setAttribute("aria-hidden", "true");
+        stone.appendChild(icon);
         tile.appendChild(stone);
       }
       const monster = monsterAt(view,row,col);
@@ -2174,27 +2199,19 @@ function renderBoard(view = game, { matched = null, dropDistances = null,
         if(monster.frozenTurns>0)tile.classList.add(monster.frozenTurns>=2 ? "frozen-dark" : "frozen-light");
         const mark = document.createElement("span");
         mark.className = "monster-mark";
-        const definition = monsterType(monster);
-        const letter = document.createElement("span");
-        letter.className = "monster-letter game-glyph";
-        letter.textContent = monster.type === "advanced" ? GLYPHS.warrior : GLYPHS.guard;
-        const dots = document.createElement("span");
-        dots.className = "hp-dots";
-        dots.setAttribute("aria-hidden", "true");
-        for (let hp = 0; hp < monster.hp; hp++) {
-          const dot = document.createElement("span");
-          dot.textContent = "\u2022";
-          dots.appendChild(dot);
-        }
-        mark.setAttribute("aria-label", `${definition.name}, ${monster.hp} health`);
-        mark.append(letter, dots);
+        mark.textContent = String(monster.hp);
+        const definition=monsterType(monster);
+        const pattern=document.createElement("span");
+        pattern.className="monster-pattern";
+        pattern.textContent=definition.symbol;
+        mark.appendChild(pattern);
         tile.title=`${definition.name}: ${monster.hp} HP; ${definition.attack === "eight" ? "eight-way in rooms" : "cardinal"} attacks; ${monster.aggro ? "pursuing" : "wandering"}`;
         tile.appendChild(mark);
       }
       if (isHero) {
         const hero = document.createElement("span");
         hero.className = "hero-mark";
-        hero.textContent = GLYPHS.hero;
+        hero.textContent = "@";
         tile.appendChild(hero);
       }
       frag.appendChild(tile);
@@ -2223,7 +2240,7 @@ function showMatchRewards(matches) {
     pop.style.left = `${centerX}px`;
     pop.style.top = `${centerY}px`;
     pop.style.color = CONFIG.ITEM_COLOR[match.kind];
-    pop.textContent = `+${match.gained} ${textGlyph(CONFIG.ITEM_LABEL[match.kind])}`;
+    pop.textContent = `+${match.gained} ${CONFIG.ITEM_LABEL[match.kind]}`;
     matchFxEl.appendChild(pop);
   }
 }
@@ -2240,7 +2257,7 @@ function showHeroBonusPopup(bonus) {
   pop.className = "reward-pop hero-bonus-pop";
   pop.style.left = `${actualTile.offsetLeft + actualTile.offsetWidth / 2}px`;
   pop.style.top = `${actualTile.offsetTop + actualTile.offsetHeight / 2}px`;
-  pop.textContent = `+${bonus} ${textGlyph(GLYPHS.attack)}`;
+  pop.textContent = `+${bonus} ⚔`;
   matchFxEl.appendChild(pop);
 }
 
@@ -2402,10 +2419,6 @@ document.querySelector("#show-help").addEventListener("click", () => {
 });
 document.querySelector("#show-icon-guide").addEventListener("click", () => showHelpPage(true));
 document.querySelector("#show-help-rules").addEventListener("click", () => showHelpPage(false));
-for (const icon of document.querySelectorAll("[data-glyph]")) {
-  icon.classList.add("game-glyph");
-  icon.textContent = textGlyph(GLYPHS[icon.dataset.glyph]);
-}
 for (const icon of document.querySelectorAll("[data-resource]")) {
   paintResourceIcon(icon, icon.dataset.resource);
 }
@@ -2416,20 +2429,7 @@ spatulaBtn.addEventListener("click",()=>{
   renderHud();renderSpellChoice();
 });
 
-async function initializeGame() {
-  const fontStatus = document.querySelector("#font-status");
-  try {
-    const sample = [...Object.values(GLYPHS), ...Object.values(CONFIG.ITEM_LABEL)].join("");
-    const loaded = await document.fonts.load('400 24px "Dungeon DejaVu"', sample);
-    if (!loaded.length) throw new Error("Bundled font was not loaded");
-    resetGame();
-    document.body.classList.remove("font-loading");
-    fontStatus.hidden = true;
-  } catch {
-    fontStatus.textContent = "The game font could not load. Keep the assets folder beside index.html and reopen the game.";
-  }
-}
-void initializeGame();
+resetGame();
 
   </script>
 </body>
