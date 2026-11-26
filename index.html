@@ -138,7 +138,7 @@ button { font: inherit; }
 .tile.floor:nth-child(11n + 1) { background: #304737; }
 .tile.wall { background: var(--wall); }
 .tile .resource {
-  font-size: clamp(17px, 6.2vw, 30px);
+  font-size: clamp(19px, 6.7vw, 33px);
   font-weight: 700;
   line-height: 1;
   pointer-events: none;
@@ -203,6 +203,12 @@ button { font: inherit; }
   background: linear-gradient(rgba(185, 38, 66, var(--heat-alpha)), rgba(185, 38, 66, var(--heat-alpha))), var(--prompt-bg);
 }
 .tile.hero .passage-mark { opacity: .3; }
+.tile.monster-attacking { overflow: visible; z-index: 10; }
+.tile.monster-attacking .monster-mark { animation: enemy-bump 180ms ease-in-out both; }
+@keyframes enemy-bump {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(var(--enemy-attack-x), var(--enemy-attack-y)); }
+}
 /* A subtle heat map replaces threat outlines. Each adjacent monster adds
    another 20%-opacity red layer: 1 = 20%, 2 = 36%, 3 = 48.8%, etc.
    Tint is painted behind resources, markers, and sprites for readability. */
@@ -245,9 +251,9 @@ button { font: inherit; }
 #version { font-size: 10px; color: #9fb7a5; text-align: right; }
 .bottom-hud { min-height: 10px; }
 .tile .monster-mark, .tile .key-mark, .tile .lumen-mark { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 900; font-size: clamp(20px, 7vw, 33px); z-index: 3; pointer-events: none; }
-.tile .lumen-mark { color: #f2e8d2; font-size: clamp(25px, 8vw, 40px); text-shadow: 0 0 8px #f0b83f, 0 0 3px #fff; background:rgba(105,78,30,.45); border:1px solid rgba(240,184,63,.65); border-radius:3px; }
-.tile .monster-mark { color: #fff5e9; background: #505b63; border: 2px solid #a4b4b4; border-radius: 3px; }
-.tile.aggro .monster-mark { background: #a83d42; color: #fff5df; border-color: #efc778; box-shadow: inset 0 0 0 1px #efc778; }
+.tile .lumen-mark { color: var(--health); font-size: clamp(25px, 8vw, 40px); text-shadow: 0 1px 2px #102f29; background: rgba(217,52,80,.12); border:1px solid var(--health); border-radius:3px; }
+.tile .monster-mark { color: var(--gingerbread); background: #3e3226; border: 2px solid #a67340; border-radius: 3px; }
+.tile.aggro .monster-mark { background: #65372d; color: var(--gingerbread); border-color: #efc778; box-shadow: inset 0 0 0 1px #efc778; }
 .tile .key-mark { color: #1b2d25; background: var(--gold); border: 2px solid #f2e8d2; border-radius: 3px; }
 .tile.monster-tile .resource, .tile.key-tile .resource, .tile.lumen-tile .resource { visibility: hidden; }
 
@@ -319,7 +325,7 @@ button { font: inherit; }
 }
 #key-tile { grid-column:6; }
 .stat-tile { position:relative; min-width:0; height:clamp(53px,18.1vw,93px); border:2px solid var(--tile-border);
-  background:transparent; border-radius:3px; display:flex; justify-content:center; align-items:center;
+  background:transparent; border-radius:6px; display:flex; justify-content:center; align-items:center;
   color:var(--tile-border); padding:4px; overflow:hidden; }
 .stat-icon { width:clamp(31px,9.6vw,48px); height:clamp(31px,9.6vw,48px); display:block; flex:none;
   margin-bottom:10px; filter:drop-shadow(0 1px 1px #07120a); }
@@ -363,7 +369,7 @@ button { font: inherit; }
 .stat-attack .attack-boost { position:absolute; top:3px; left:4px; font-size:clamp(8px,2.2vw,11px);
   font-weight:900; color:var(--mint); display:none; }
 .stat-attack.boosted .attack-boost { display:block; }
-.stat-moves { --tile-border:var(--text); }
+.stat-moves { --tile-border:var(--moves); }
 .stat-health { --tile-border:var(--health); }
 .stat-objective { --tile-border:#397053; border:3px solid var(--tile-border); }
 .stat-objective .stat-icon { width:clamp(27px,8.5vw,43px); height:clamp(27px,8.5vw,43px);
@@ -478,7 +484,7 @@ button { font: inherit; }
       <div id="spell-panel" class="results hidden" role="dialog" aria-modal="true" aria-label="Choose a spell"></div>
     </section>
 
-    <footer class="hud bottom-hud"><div id="version">Reset 4.5</div></footer>
+    <footer class="hud bottom-hud"><div id="version">Reset 4.6</div></footer>
   </main>
   <dialog id="restart-dialog" class="results-panel" aria-labelledby="restart-title" aria-describedby="restart-message">
     <h2 id="restart-title">New game</h2>
@@ -797,7 +803,7 @@ function matchSummary(state) {
 }
 
 function runData(state) {
-  return {version:"4.5",outcome:state.gameWon ? "rescued" : state.gameOverReason || "in-progress",
+  return {version:"4.6",outcome:state.gameWon ? "rescued" : state.gameOverReason || "in-progress",
     stage:state.stage,alarmActive:state.alarmActive,keyDiscovered:state.keyDiscovered,lumenDiscovered:state.lumenDiscovered,health:state.hp,resources:{...state.resources},score:scoreBreakdown(state),
     matches:matchSummary(state),stats:state.stats};
 }
@@ -828,7 +834,7 @@ function downloadRunData(state) {
   const link=document.createElement("a");
   const stamp=new Date().toISOString().replace(/[:.]/g,"-");
   link.href=url;
-  link.download=`dungeon-match3-v4.5-${state.gameWon ? "rescued" : state.gameOverReason || "run"}-${stamp}.json`;
+  link.download=`dungeon-match3-v4.6-${state.gameWon ? "rescued" : state.gameOverReason || "run"}-${stamp}.json`;
   try {
     document.body.appendChild(link);
     link.click();
@@ -1176,7 +1182,7 @@ function moveMonsters(state, rng = defaultRng, alreadyActed = new Set()) {
   }
 }
 
-function resolveProximityDamage(state, damagedThisTurn = new Set(), {eligible=null,chase=false} = {}) {
+function resolveProximityDamage(state, damagedThisTurn = new Set(), {eligible=null,chase=false,attackers=null} = {}) {
   let damage=0;
   for (const monster of state.monsters) {
     if (state.hp<=0) break;
@@ -1189,6 +1195,7 @@ function resolveProximityDamage(state, damagedThisTurn = new Set(), {eligible=nu
     state.stats.damageTaken+=lost;
     if(chase)state.stats.chaseDamageTaken+=lost;
     damage+=lost;
+    if (lost > 0 && attackers) attackers.push({row: monster.row, col: monster.col});
     if (!state.hp) state.defeatedBy = monsterType(monster).name;
   }
   state.lastProximityDamage+=damage;
@@ -1664,6 +1671,7 @@ function resolveHeroAction(state,{direction,turnCascadeBonus,skipHeroAction=fals
   const destCol = state.playerCol + dc;
   const defender = skipHeroAction ? null : monsterAt(state, destRow, destCol);
   const damagedThisTurn = new Set();
+  const actionFrameIndex = state.animationEvents.length;
   let moved = false;
 
   if (defender) {
@@ -1739,6 +1747,16 @@ function resolveHeroAction(state,{direction,turnCascadeBonus,skipHeroAction=fals
     if (state.hp > 0) resolveAllMatches(state, rng, {source:"hero-reveal"});
   }
   discoverObjective(state);
+  const objectives = {
+    hasKey: state.hasKey, keyDiscovered: state.keyDiscovered,
+    lumenDiscovered: state.lumenDiscovered,
+    lumenPos: state.lumenPos ? [...state.lumenPos] : null,
+  };
+  for (let index = actionFrameIndex; index < state.animationEvents.length; index++) {
+    const event = state.animationEvents[index];
+    if (event.after) Object.assign(event.after, objectives);
+    if (index > actionFrameIndex && event.before) Object.assign(event.before, objectives);
+  }
   return pauseOrContinue(state,{phase:"enemies",damagedThisTurn},rng);
 }
 
@@ -1769,8 +1787,9 @@ function resolveEnemyPhase(state,{damagedThisTurn},rng) {
   }
 
   updateMonsterAwareness(state);
-  if (resolveProximityDamage(state, damagedThisTurn)) {
-    state.animationEvents.push({type: "enemy-hit", after: snapshotBoard(state)});
+  const nearbyAttackers = [];
+  if (resolveProximityDamage(state, damagedThisTurn, {attackers: nearbyAttackers})) {
+    state.animationEvents.push({type: "enemy-hit", attackers: nearbyAttackers, after: snapshotBoard(state)});
   }
   if (!state.gameOver) {
     const monsterBefore = snapshotBoard(state);
@@ -1778,7 +1797,10 @@ function resolveEnemyPhase(state,{damagedThisTurn},rng) {
     const hunters=new Set(state.monsters.filter(monster=>monster.aggro));
     moveMonsters(state, rng, damagedThisTurn);
     // Hunting monsters may follow and hit, but each monster hits at most once.
-    const chaseDamage = resolveProximityDamage(state,damagedThisTurn,{eligible:hunters,chase:true});
+    const chasingAttackers = [];
+    const chaseDamage = resolveProximityDamage(state,damagedThisTurn,{
+      eligible: hunters, chase: true, attackers: chasingAttackers,
+    });
     const movements = [];
     for (const monster of state.monsters) {
       const from = oldPositions.get(monster);
@@ -1792,7 +1814,9 @@ function resolveEnemyPhase(state,{damagedThisTurn},rng) {
         after: snapshotBoard(state), movements,
       });
     }
-    if (chaseDamage) state.animationEvents.push({type: "enemy-hit", after: snapshotBoard(state)});
+    if (chaseDamage) state.animationEvents.push({
+      type: "enemy-hit", attackers: chasingAttackers, after: snapshotBoard(state),
+    });
     // Wandering into range still waits until the next turn; pursuing enemies
     // have already applied their one permitted hit after following.
     // A monster can move away and reveal an ordinary three-in-a-row.
@@ -1827,7 +1851,7 @@ function swipeDirection(dx, dy, minimum = CONFIG.MIN_SWIPE) {
 
 const GLYPHS = Object.freeze({
   entrance: "\u003C", exit: "\u003E", hero: "\u0040",
-  guard: "\u0047", warrior: "\u0057", santa: "\u0053",
+  guard: "\u2687", warrior: "\u2689", santa: "\u0053",
   key: "\u0138", present: "\u25A8", attack: "\u2694",
 });
 
@@ -2067,7 +2091,7 @@ function paintResourceIcon(element, item) {
 
 function renderBoard(view = game, { matched = null, dropDistances = null,
   heroFrom = null, monsterMovements = null,
-  attackTarget = null, attackWindup = false, heroHit = false } = {}) {
+  attackTarget = null, attackWindup = false, heroHit = false, monsterAttackers = [] } = {}) {
   const heroRow = view.playerRow;
   const heroCol = view.playerCol;
   const matchKeys = matched ? new Set(matched.flatMap(m => m.cells.map(coordKey))) : null;
@@ -2166,6 +2190,11 @@ function renderBoard(view = game, { matched = null, dropDistances = null,
             tile.style.setProperty("--monster-from-y", `${(movement.from[0]-row)*(tileSize+3)}px`);
           }
         }
+        if (monsterAttackers.some(attacker => attacker.row === row && attacker.col === col)) {
+          tile.classList.add("monster-attacking");
+          tile.style.setProperty("--enemy-attack-x", `${(heroCol-col)*tileSize*.22}px`);
+          tile.style.setProperty("--enemy-attack-y", `${(heroRow-row)*tileSize*.22}px`);
+        }
         if (monster.aggro) tile.classList.add("aggro");
         if(monster.frozenTurns>0)tile.classList.add(monster.frozenTurns>=2 ? "frozen-dark" : "frozen-light");
         const mark = document.createElement("span");
@@ -2250,7 +2279,7 @@ async function playCascadeAnimation(events) {
   resultsEl.classList.add("hidden");
 
   let enemiesReadyAt = 0;
-  for (const [index, event] of events.entries()) {
+  for (const event of events) {
     if (!isActive()) return;
     switch (event.type) {
       case "hero-movement":
@@ -2270,13 +2299,22 @@ async function playCascadeAnimation(events) {
         await wait(230);
         if (!isActive()) return;
         setAttackDisplay(0);
+        if (event.retaliationDamage) {
+          // A defeated enemy still gets its existing retaliation before it disappears.
+          renderBoard(event.killed ? event.before : event.after, {
+            heroHit: true,
+            monsterAttackers: [{row: event.target[0], col: event.target[1]}],
+          });
+          renderHealth(event.after.hp);
+          flash("enemy-hit");
+          await wait(180);
+          if (!isActive()) return;
+        }
         renderBoard(event.after, {
           heroFrom: event.killed ? [event.before.playerRow, event.before.playerCol] : null,
-          heroHit: !event.killed && Boolean(event.retaliationDamage),
         });
         renderHealth(event.after.hp);
-        if (event.retaliationDamage) flash("enemy-hit");
-        await wait(event.killed ? 170 : 180);
+        if (event.killed) await wait(170);
         enemiesReadyAt = performance.now() + 500;
         break;
       case "monster-movement":
@@ -2288,10 +2326,10 @@ async function playCascadeAnimation(events) {
           renderBoard(event.after, {monsterMovements: event.movements});
           await wait(280);
         } else {
-          renderBoard(event.after, {heroHit: true});
+          renderBoard(event.after, {heroHit: true, monsterAttackers: event.attackers});
           renderHealth(event.after.hp);
           flash("enemy-hit");
-          if (events[index + 1]?.type !== "monster-movement") await wait(180);
+          await wait(180);
         }
         break;
       }
