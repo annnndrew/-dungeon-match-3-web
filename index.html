@@ -143,6 +143,9 @@ button { font: inherit; }
   line-height: 1;
   pointer-events: none;
 }
+.tile .resource.resource-bombs, .tile .resource.resource-monster {
+  font-size: clamp(22px, 7.6vw, 38px);
+}
 .tile .resource.falling {
   position: relative;
   z-index: 6;
@@ -194,8 +197,8 @@ button { font: inherit; }
   z-index: 2;
   font-size: clamp(23px, 7vw, 36px);
 }
-.tile.entrance-tile { background: #284a41; border: 1px solid #9abdb3; }
-.tile.exit-tile { background: #4a432b; border: 1px solid var(--gold); }
+.tile.entrance-tile { background: var(--prompt-bg); border: 1px solid #9abdb3; }
+.tile.exit-tile { background: var(--prompt-bg); border: 1px solid var(--gold); }
 .tile.entrance-tile .passage-mark { color: #b4d7ce; }
 .tile.exit-tile .passage-mark { color: var(--gold); }
 .tile.stairway-tile:is(.entrance-tile, .exit-tile) { background: var(--prompt-bg); }
@@ -209,6 +212,10 @@ button { font: inherit; }
   0%, 100% { transform: translate(0, 0); }
   50% { transform: translate(var(--enemy-attack-x), var(--enemy-attack-y)); }
 }
+.tile.floor:is(.entrance-tile, .exit-tile) { background: var(--prompt-bg); }
+.tile.floor.heat:is(.entrance-tile, .exit-tile) {
+  background: linear-gradient(rgba(185, 38, 66, var(--heat-alpha)), rgba(185, 38, 66, var(--heat-alpha))), var(--prompt-bg);
+}
 /* A subtle heat map replaces threat outlines. Each adjacent monster adds
    another 20%-opacity red layer: 1 = 20%, 2 = 36%, 3 = 48.8%, etc.
    Tint is painted behind resources, markers, and sprites for readability. */
@@ -216,10 +223,10 @@ button { font: inherit; }
   background: linear-gradient(rgba(185, 38, 66, var(--heat-alpha)), rgba(185, 38, 66, var(--heat-alpha))), var(--floor);
 }
 .tile.heat.entrance-tile {
-  background: linear-gradient(rgba(185, 38, 66, var(--heat-alpha)), rgba(185, 38, 66, var(--heat-alpha))), #284a41;
+  background: linear-gradient(rgba(185, 38, 66, var(--heat-alpha)), rgba(185, 38, 66, var(--heat-alpha))), var(--prompt-bg);
 }
 .tile.heat.exit-tile {
-  background: linear-gradient(rgba(185, 38, 66, var(--heat-alpha)), rgba(185, 38, 66, var(--heat-alpha))), #4a432b;
+  background: linear-gradient(rgba(185, 38, 66, var(--heat-alpha)), rgba(185, 38, 66, var(--heat-alpha))), var(--prompt-bg);
 }
 .tile.recent-hit .hero-mark { animation: hero-hit .34s ease-out; }
 @keyframes hero-hit { 0%, 55% { color: #ff5151; transform:scale(1.3); } 100% { color:#fff; transform:scale(1); } }
@@ -251,9 +258,21 @@ button { font: inherit; }
 #version { font-size: 10px; color: #9fb7a5; text-align: right; }
 .bottom-hud { min-height: 10px; }
 .tile .monster-mark, .tile .key-mark, .tile .lumen-mark { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 900; font-size: clamp(20px, 7vw, 33px); z-index: 3; pointer-events: none; }
-.tile .lumen-mark { color: var(--health); font-size: clamp(25px, 8vw, 40px); text-shadow: 0 1px 2px #102f29; background: rgba(217,52,80,.12); border:1px solid var(--health); border-radius:3px; }
-.tile .monster-mark { color: var(--gingerbread); background: #3e3226; border: 2px solid #a67340; border-radius: 3px; }
-.tile.aggro .monster-mark { background: #65372d; color: var(--gingerbread); border-color: #efc778; box-shadow: inset 0 0 0 1px #efc778; }
+.tile .lumen-mark { color: var(--health); font-size: clamp(25px, 8vw, 40px); background: #fff; border:0; border-radius:3px; }
+.tile.monster-tile { --enemy-color: var(--mint); }
+.tile.monster-tile.warrior { --enemy-color: var(--text); }
+.tile.heat .lumen-mark {
+  background: linear-gradient(rgba(185, 38, 66, var(--heat-alpha)), rgba(185, 38, 66, var(--heat-alpha))), #fff;
+}
+.tile .monster-mark { color: var(--enemy-color); background: transparent; border: 0; box-shadow: none; }
+.tile.aggro:not(.frozen-dark):not(.frozen-light) .monster-letter { animation: hunting-pulse 1.8s ease-in-out infinite; }
+@keyframes hunting-pulse {
+  0%, 100% { color: var(--enemy-color); }
+  50% { color: var(--health); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tile.aggro:not(.frozen-dark):not(.frozen-light) .monster-letter { animation:none; color:var(--health); }
+}
 .tile .key-mark { color: #1b2d25; background: var(--gold); border: 2px solid #f2e8d2; border-radius: 3px; }
 .tile.monster-tile .resource, .tile.key-tile .resource, .tile.lumen-tile .resource { visibility: hidden; }
 
@@ -307,8 +326,8 @@ button { font: inherit; }
 }
 
 
-.tile.frozen-dark .monster-mark { background:#143e91;border-color:#5193e3;color:#e9f3ff;box-shadow:none; }
-.tile.frozen-light .monster-mark { background:#77b5df;border-color:#d1edff;color:#102a4d;box-shadow:none; }
+.tile.frozen-dark .monster-mark { color:#5193e3; }
+.tile.frozen-light .monster-mark { color:#77b5df; }
 
 /* Reset 4.3 HUD arrangement with an independent Attack card. */
 .top-hud { min-height: 40px; }
@@ -405,7 +424,7 @@ button { font: inherit; }
 .stat-objective .stat-icon.game-glyph { display: grid; place-items: center; }
 
 .game-glyph, .tile .resource, .hero-mark, .key-mark, .lumen-mark,
-.monster-letter, .hp-dots, .reward-pop, .passage-mark {
+.monster-letter, .hp-number, .reward-pop, .passage-mark {
   font-family: "Dungeon DejaVu";
   font-style: normal;
   font-weight: 400 !important;
@@ -414,10 +433,17 @@ button { font: inherit; }
   line-height: 1;
 }
 .icon-guide .game-glyph { display: inline-grid; place-items: center; }
-.tile .monster-mark { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 0; padding: 1px; }
-.monster-letter { display: grid; place-items: center; font-size: clamp(17px, 5.4vw, 28px); height: 1em; }
-.hp-dots { display: flex; justify-content: center; align-items: center; height: 7px; font-size: clamp(8px, 2.3vw, 10px); letter-spacing: 0; }
-.hp-dots span { display: block; line-height: 1; }
+.tile .monster-mark { display: block; }
+.monster-letter {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-size: clamp(23px, 7.2vw, 37px); transform: translateY(-1px);
+}
+.hp-number {
+  position: absolute; right: 2px; bottom: 1px;
+  font-size: clamp(9px, 2.7vw, 12px); line-height: 1;
+}
+[data-glyph="guard"] { color: var(--mint); }
+[data-glyph="warrior"] { color: var(--text); }
 .tile .resource, .hero-mark, .key-mark, .lumen-mark { display: grid; place-items: center; }
 .tile .lumen-mark { font-size: clamp(23px, 7vw, 36px); }
 #font-status { margin: 24px; color: var(--text); }
@@ -484,7 +510,7 @@ button { font: inherit; }
       <div id="spell-panel" class="results hidden" role="dialog" aria-modal="true" aria-label="Choose a spell"></div>
     </section>
 
-    <footer class="hud bottom-hud"><div id="version">Reset 4.6</div></footer>
+    <footer class="hud bottom-hud"><div id="version">Reset 4.7</div></footer>
   </main>
   <dialog id="restart-dialog" class="results-panel" aria-labelledby="restart-title" aria-describedby="restart-message">
     <h2 id="restart-title">New game</h2>
@@ -510,7 +536,7 @@ button { font: inherit; }
         <dt><span data-resource="gold" aria-hidden="true"></span></dt><dd><strong>Gold.</strong> Collect coins. Game Over lists the gold you matched.</dd>
         <dt><span data-resource="monster" aria-hidden="true"></span></dt><dd><strong>Summoning.</strong> Matches of three, four, or five earn 1, 2, or 5 summon points. Every two points summon a level-appropriate monster after your move.</dd>
         <dt aria-hidden="true">@</dt><dd><strong>Hero.</strong> Your position on the board.</dd>
-        <dt aria-hidden="true"><span data-glyph="guard"></span> / <span data-glyph="warrior"></span></dt><dd><strong>Guard / Warrior.</strong> Each dot underneath the character is one remaining HP. Both types start with 1–3 HP on level 1, 2–4 on level 2, and 3–5 on level 3. Guards attack cardinally. Warriors also attack diagonally within rooms.</dd>
+        <dt aria-hidden="true"><span data-glyph="guard"></span> / <span data-glyph="warrior"></span></dt><dd><strong>Guard / Warrior.</strong> The number at the bottom right shows remaining HP. Aqua enemies are Guards and white enemies are Warriors. Hunting enemies pulse red. Both types start with 1–3 HP on level 1, 2–4 on level 2, and 3–5 on level 3. Guards attack cardinally. Warriors also attack diagonally within rooms.</dd>
         <dt aria-hidden="true"><span data-glyph="key"></span> / <span data-glyph="santa"></span></dt><dd><strong>Key / Santa.</strong> Collect the objective before taking the exit.</dd>
         <dt><span data-glyph="present" aria-hidden="true"></span></dt><dd><strong>Present.</strong> Optional score bonus after it’s revealed.</dd>
         <dt><span data-glyph="entrance" aria-hidden="true"></span></dt><dd><strong>Enter / Up.</strong> Your entrance to this level.</dd>
@@ -803,7 +829,7 @@ function matchSummary(state) {
 }
 
 function runData(state) {
-  return {version:"4.6",outcome:state.gameWon ? "rescued" : state.gameOverReason || "in-progress",
+  return {version:"4.7",outcome:state.gameWon ? "rescued" : state.gameOverReason || "in-progress",
     stage:state.stage,alarmActive:state.alarmActive,keyDiscovered:state.keyDiscovered,lumenDiscovered:state.lumenDiscovered,health:state.hp,resources:{...state.resources},score:scoreBreakdown(state),
     matches:matchSummary(state),stats:state.stats};
 }
@@ -834,7 +860,7 @@ function downloadRunData(state) {
   const link=document.createElement("a");
   const stamp=new Date().toISOString().replace(/[:.]/g,"-");
   link.href=url;
-  link.download=`dungeon-match3-v4.6-${state.gameWon ? "rescued" : state.gameOverReason || "run"}-${stamp}.json`;
+  link.download=`dungeon-match3-v4.7-${state.gameWon ? "rescued" : state.gameOverReason || "run"}-${stamp}.json`;
   try {
     document.body.appendChild(link);
     link.click();
@@ -1851,7 +1877,7 @@ function swipeDirection(dx, dy, minimum = CONFIG.MIN_SWIPE) {
 
 const GLYPHS = Object.freeze({
   entrance: "\u003C", exit: "\u003E", hero: "\u0040",
-  guard: "\u2687", warrior: "\u2689", santa: "\u0053",
+  guard: "\u2689", warrior: "\u2689", santa: "\u0053",
   key: "\u0138", present: "\u25A8", attack: "\u2694",
 });
 
@@ -2133,7 +2159,7 @@ function renderBoard(view = game, { matched = null, dropDistances = null,
       const item = view.itemGrid[row][col];
       if (item !== null) {
         const resource = document.createElement("span");
-        resource.className = "resource";
+        resource.className = `resource resource-${item}`;
         if (dropDistances && dropDistances[cellKey] > 0) {
           tile.classList.add("fall-tile");
           resource.classList.add("falling");
@@ -2178,7 +2204,7 @@ function renderBoard(view = game, { matched = null, dropDistances = null,
       }
       const monster = monsterAt(view,row,col);
       if (monster) {
-        tile.classList.add("monster-tile");
+        tile.classList.add("monster-tile", monster.type === "advanced" ? "warrior" : "guard");
         if (attackWindup && attackTarget &&
             row === attackTarget[0] && col === attackTarget[1])
           tile.classList.add("attack-target");
@@ -2203,16 +2229,12 @@ function renderBoard(view = game, { matched = null, dropDistances = null,
         const letter = document.createElement("span");
         letter.className = "monster-letter game-glyph";
         letter.textContent = monster.type === "advanced" ? GLYPHS.warrior : GLYPHS.guard;
-        const dots = document.createElement("span");
-        dots.className = "hp-dots";
-        dots.setAttribute("aria-hidden", "true");
-        for (let hp = 0; hp < monster.hp; hp++) {
-          const dot = document.createElement("span");
-          dot.textContent = "\u2022";
-          dots.appendChild(dot);
-        }
+        const health = document.createElement("span");
+        health.className = "hp-number game-glyph";
+        health.textContent = String(monster.hp);
+        health.setAttribute("aria-hidden", "true");
         mark.setAttribute("aria-label", `${definition.name}, ${monster.hp} health`);
-        mark.append(letter, dots);
+        mark.append(letter, health);
         tile.title=`${definition.name}: ${monster.hp} HP; ${definition.attack === "eight" ? "eight-way in rooms" : "cardinal"} attacks; ${monster.aggro ? "pursuing" : "wandering"}`;
         tile.appendChild(mark);
       }
