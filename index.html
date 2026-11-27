@@ -464,11 +464,11 @@ button { font: inherit; }
           <span class="attack-boost" id="attack-boost" aria-hidden="true">+0</span>
           <span class="stat-number attack-number" id="attack-count">2</span>
         </div>
-        <button id="spatula-button" class="stat-tile stat-magic" type="button" disabled aria-label="Magic, 0 of 9 charge">
+        <button id="spatula-button" class="stat-tile stat-magic" type="button" disabled aria-label="Magic, 0 of 5 charge">
           <span class="stat-label">Magic</span>
           <span class="stat-icon game-glyph" data-resource="bombs" aria-hidden="true"></span>
           <span class="cast-indicator" aria-hidden="true">CAST</span>
-          <span class="stat-number" id="magic-count">0/9</span>
+          <span class="stat-number" id="magic-count">0/5</span>
         </button>
         <div class="stat-tile stat-moves" id="moves-tile" role="img" aria-label="30 turns remaining">
           <span class="stat-label">Moves</span>
@@ -506,7 +506,7 @@ button { font: inherit; }
       <div id="spell-panel" class="results hidden" role="dialog" aria-modal="true" aria-label="Choose a spell"></div>
     </section>
 
-    <footer class="hud bottom-hud"><div id="version">Reset 4.8</div></footer>
+    <footer class="hud bottom-hud"><div id="version">Reset 4.9</div></footer>
   </main>
   <dialog id="restart-dialog" class="results-panel" aria-labelledby="restart-title" aria-describedby="restart-message">
     <h2 id="restart-title">New game</h2>
@@ -521,14 +521,14 @@ button { font: inherit; }
     <section id="help-rules">
       <p>Swipe from a tile toward a neighbor to swap resources. Match three or more in a row or column. A successful match moves your hero in the swipe direction, or attacks if a monster is in the way.</p>
       <p>Find the key and reach the exit. On the final level, rescue Santa and bring him to the exit. The key and Santa are revealed from one tile away. Red tiles warn of damage on your next move.</p>
-      <p>When Magic reaches 9/9, tap its icon to choose a spell.</p>
+      <p>When Magic reaches 5/5, tap its icon to choose a spell.</p>
       <button id="show-icon-guide" type="button">Resources &amp; icons →</button>
     </section>
     <section id="help-icons" hidden>
       <dl class="icon-guide">
         <dt><span data-resource="food" aria-hidden="true"></span></dt><dd><strong>Turns.</strong> Refill your remaining turns. Every successful swipe spends one turn.</dd>
         <dt><span data-resource="health" aria-hidden="true"></span></dt><dd><strong>Health.</strong> Recover lost health, up to 9.</dd>
-        <dt><span data-resource="bombs" aria-hidden="true"></span></dt><dd><strong>Magic.</strong> Tap the Magic icon at 9/9 to pick a spell.</dd>
+        <dt><span data-resource="bombs" aria-hidden="true"></span></dt><dd><strong>Magic.</strong> Tap the Magic icon at 5/5 to pick a spell.</dd>
         <dt><span data-resource="gold" aria-hidden="true"></span></dt><dd><strong>Gold.</strong> Collect coins. Game Over lists the gold you matched.</dd>
         <dt><span data-resource="monster" aria-hidden="true"></span></dt><dd><strong>Summoning.</strong> Matches of three, four, or five earn 1, 2, or 5 summon points. Every two points summon a level-appropriate monster after your move.</dd>
         <dt aria-hidden="true">@</dt><dd><strong>Hero.</strong> Your position on the board.</dd>
@@ -582,7 +582,7 @@ const CONFIG = {
   MONSTER_KILL_SCORE: 30,
   LUMEN_SCORE: 60,
   LUMEN_SCORE_CAP: 3,
-  MAGIC_THRESHOLD: 9, // Charge persists until the player activates the spatula.
+  MAGIC_THRESHOLD: 5, // Charge persists until the player activates the spatula.
   MIN_SWIPE: 18,
   MAX_CASCADE_WAVES: 250,
   MATCH_REWARDS: {
@@ -825,7 +825,7 @@ function matchSummary(state) {
 }
 
 function runData(state) {
-  return {version:"4.8",outcome:state.gameWon ? "rescued" : state.gameOverReason || "in-progress",
+  return {version:"4.9",won:state.gameWon,completed:state.gameWon || state.gameOver,enemyTypes:{basic:"Guard",advanced:"Warrior"},magicThreshold:CONFIG.MAGIC_THRESHOLD,spellDefinitions:SPELLS,outcome:state.gameWon ? "rescued" : state.gameOverReason || "in-progress",
     stage:state.stage,alarmActive:state.alarmActive,keyDiscovered:state.keyDiscovered,lumenDiscovered:state.lumenDiscovered,health:state.hp,resources:{...state.resources},score:scoreBreakdown(state),
     matches:matchSummary(state),stats:state.stats};
 }
@@ -842,11 +842,12 @@ function runSummary(state) {
       damageTaken:turns.reduce((sum,t)=>sum+(t.damageTaken||0),0),
       chaseDamageTaken:turns.reduce((sum,t)=>sum+(t.chaseDamageTaken||0),0),
       maxEnemies:Math.max(CONFIG.MONSTER_START_COUNTS[stage],
-        ...turns.filter(turn=>turn.nextStage===stage).map(turn=>turn.enemies)),
+        ...turns.map(turn=>turn.enemiesBefore ?? 0),
+        ...turns.filter(turn=>turn.nextStage===stage).map(turn=>turn.enemiesAfter ?? turn.enemies)),
       objectiveDiscoveredAt:turns.find(turn=>turn.keyDiscovered)?.turn ?? null,
       alarmAt:totals.alarmTriggers.find(alarm=>alarm.stage===stage)?.turn ?? null});
   }
-  return {...data,exportType:"summary",stats:{...totals,stages}};
+  return {...data,exportType:"summary",stats:{...totals,stages,turnLog}};
 }
 
 function downloadRunData(state) {
@@ -856,7 +857,7 @@ function downloadRunData(state) {
   const link=document.createElement("a");
   const stamp=new Date().toISOString().replace(/[:.]/g,"-");
   link.href=url;
-  link.download=`dungeon-match3-v4.8-${state.gameWon ? "rescued" : state.gameOverReason || "run"}-${stamp}.json`;
+  link.download=`dungeon-match3-v4.9-${state.gameWon ? "rescued" : state.gameOverReason || "run"}-${stamp}.json`;
   try {
     document.body.appendChild(link);
     link.click();
@@ -959,13 +960,23 @@ function startingResources() {
   return { food: CONFIG.STARTING_FOOD, monster: 0, gold: 0, bombs: 0 };
 }
 
+function gainHealth(state, amount, source) {
+  const gained = Math.min(amount, Math.max(0, CONFIG.MAX_HP-state.hp));
+  const wasted = amount-gained;
+  state.hp += gained;
+  state.stats.healthGained += gained;
+  state.stats.healthWasted += wasted;
+  state.stats.healingBySource[source].gained += gained;
+  state.stats.healingBySource[source].wasted += wasted;
+  state.stats.peakHealth = Math.max(state.stats.peakHealth, state.hp);
+}
+
 function grantRunReward(state, itemType, runLength) {
   // A full spatula makes further Magic matches worth zero, even across cascades.
   const gained = itemType === "bombs" && state.magicReady ? 0 : resourcesForRunLength(itemType, runLength);
   state.stats.resourcesCollected[itemType] += gained;
   if (itemType === "health") {
-    state.hp = Math.min(CONFIG.MAX_HP,state.hp + gained);
-    state.stats.peakHealth=Math.max(state.stats.peakHealth,state.hp);
+    gainHealth(state, gained, "matches");
     return;
   }
   if (itemType === "monster") {
@@ -1019,11 +1030,27 @@ function discoverObjective(state) {
   return discovered;
 }
 
+function distanceToExit(state) {
+  const queue = [[state.playerRow, state.playerCol, 0]];
+  const visited = new Set([coordKey([state.playerRow, state.playerCol])]);
+  for (const [r, c, distance] of queue) {
+    if (r === state.dungeon.exitPos[0] && c === state.dungeon.exitPos[1]) return distance;
+    for (const [dr, dc] of Object.values(DIRECTIONS)) {
+      const nr=r+dr, nc=c+dc, key=coordKey([nr,nc]);
+      if (visited.has(key) || !isWalkable(state.dungeon,nr,nc) || !clearDiagonal(state.dungeon,r,c,nr,nc)) continue;
+      visited.add(key);
+      queue.push([nr,nc,distance+1]);
+    }
+  }
+  return null;
+}
+
 function triggerAlarm(state) {
   if(state.alarmActive)return;
   state.alarmActive=true;
   state.stats.alarmTriggers.push({stage:state.stage,turn:state.stats.turns,
-    objective:state.stage===CONFIG.STAGE_COUNT ? "Santa" : "key"});
+    objective:state.stage===CONFIG.STAGE_COUNT ? "Santa" : "key",
+    distanceToExit: distanceToExit(state)});
   updateMonsterAwareness(state);
 }
 
@@ -1164,13 +1191,18 @@ function chaseStep(state, monster) {
   const reached = (r,c) => (state.alarmActive || monster.seesPlayer)
     ? monsterCanAttack(state,{...monster,row:r,col:c},state.playerRow,state.playerCol)
     : r===monster.lastSeen[0] && c===monster.lastSeen[1];
+  const target = state.alarmActive || monster.seesPlayer
+    ? [state.playerRow, state.playerCol] : monster.lastSeen;
+  const distanceSquared = (r, c) => (r-target[0])**2 + (c-target[1])**2;
   const queue=[{row:monster.row,col:monster.col,first:null}];
   const visited=new Set([coordKey([monster.row,monster.col])]);
   for (let i=0;i<queue.length;i++) {
     const node=queue[i];
     if (reached(node.row,node.col)) return node.first;
-    // Fixed order makes pursuit predictable, including equal-distance paths.
-    for (const [dr,dc] of Object.values(DIRECTIONS)) {
+    // Prefer direct diagonal progress when multiple shortest paths are available.
+    const directions = Object.values(DIRECTIONS).slice().sort(([ar, ac], [br, bc]) =>
+      distanceSquared(node.row+ar, node.col+ac) - distanceSquared(node.row+br, node.col+bc));
+    for (const [dr,dc] of directions) {
       const r=node.row+dr,c=node.col+dc,key=coordKey([r,c]);
       if (visited.has(key) || !monsterCanStep(state,monster,r,c,node.row,node.col)) continue;
       visited.add(key);
@@ -1215,6 +1247,7 @@ function resolveProximityDamage(state, damagedThisTurn = new Set(), {eligible=nu
     const lost=Math.min(state.hp,hit);
     state.hp-=lost;
     state.stats.damageTaken+=lost;
+    state.stats.damageTakenByEnemyType[monster.type || "basic"] += lost;
     if(chase)state.stats.chaseDamageTaken+=lost;
     damage+=lost;
     if (lost > 0 && attackers) attackers.push({row: monster.row, col: monster.col});
@@ -1275,10 +1308,10 @@ function processTriggers(state, rng = defaultRng) {
 }
 
 const SPELLS = {
-  freeze:{name:"Deep Freeze",description:"Freeze monsters within 2 tiles for 2 turns. Walls block the spell."},
+  freeze:{name:"Deep Freeze",description:"Freeze every monster on the board for 2 turns."},
   heal:{name:"Christmas Cookies",description:"Restore your health to 9."},
   teleport:{name:"Chimney Hop",description:"Teleport to a random empty floor tile. Your turn continues there."},
-  shuffle:{name:"Stir the Pot",description:"Reshuffle the board and collect any matches it creates."},
+  burst:{name:"Jingle Blast",description:"Destroy every monster in the 8 tiles surrounding you."},
   map:{name:"Reveal Map",description:"Reveal the key or Santa and the present on this stage."},
 };
 
@@ -1289,6 +1322,9 @@ function activateSpatula(state,rng=defaultRng) {
   const first=choice(pool,rng),second=choice(pool.filter(id=>id!==first),rng);
   state.spellOffer=[first,second];state.spellPanelHidden=false;
   state.stats.spellOffers++;
+  state.stats.spellOfferLog.push({
+    stage: state.stage, turn: state.stats.turns, options: [...state.spellOffer], selected: null,
+  });
   return true;
 }
 
@@ -1299,26 +1335,15 @@ function pauseOrContinue(state,context,rng) {
   return completeTurn(state);
 }
 
-function shuffleResources(state, rng) {
-  const blocked = new Set(occupiedCells(state).map(coordKey));
-  const cells = [];
-  for (let r = 0; r < CONFIG.BOARD_ROWS; r++) {
-    for (let c = 0; c < CONFIG.BOARD_COLS; c++) {
-      if (state.itemGrid[r][c] != null && !blocked.has(coordKey([r, c]))) cells.push([r, c]);
-    }
-  }
-  const values = cells.map(([r, c]) => state.itemGrid[r][c]);
-  for (let i = values.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    [values[i], values[j]] = [values[j], values[i]];
-  }
-  cells.forEach(([r, c], i) => { state.itemGrid[r][c] = values[i]; });
-  state.stats.boardResets++;
-}
-
 function chooseSpell(state, id, rng = defaultRng) {
   if (!state.spellOffer || state.gameOver || state.gameWon ||
       (id !== "pass" && !state.spellOffer.includes(id))) return false;
+  const offer = state.stats.spellOfferLog.at(-1);
+  const spellBefore = {
+    health: state.hp, enemies: state.monsters.length,
+    healthGained: state.stats.healthGained, healthWasted: state.stats.healthWasted,
+  };
+  if (offer && offer.selected === null) offer.selected = id;
   state.spellOffer=null;state.spellPanelHidden=false;
   state.magicReady=false;state.resources.bombs=0;
   state.animationEvents=[];
@@ -1328,21 +1353,29 @@ function chooseSpell(state, id, rng = defaultRng) {
     state.stats.spellsCast[id]++;
     state.lastEvent=SPELLS[id].name.toUpperCase();
     if(id==="freeze") {
-      for(const monster of state.monsters)if(
-        Math.max(Math.abs(monster.row-state.playerRow),Math.abs(monster.col-state.playerCol))<=2 &&
-        hasLineOfSight(state.dungeon,state.playerRow,state.playerCol,monster.row,monster.col)) {
+      for (const monster of state.monsters) {
         monster.frozenTurns=2;
         monster.skipFreezeDecay=true;
       }
     } else if(id==="heal") {
-      state.hp=CONFIG.MAX_HP;state.stats.peakHealth=Math.max(state.stats.peakHealth,state.hp);
+      gainHealth(state, CONFIG.MAX_HP, "spells");
     } else if(id==="map") {
       if(!state.hasKey)state.keyDiscovered=true;
       if(state.lumenPos)state.lumenDiscovered=true;
-    } else if(id==="shuffle") {
-      shuffleResources(state, rng);
+    } else if (id === "burst") {
+      const before = snapshotBoard(state);
+      const victims = state.monsters.filter(monster =>
+        Math.max(Math.abs(monster.row-state.playerRow), Math.abs(monster.col-state.playerCol)) <= 1);
+      for (const monster of victims) {
+        state.stats.damageDealt += monster.hp;
+        state.stats.damageDealtByEnemyType[monster.type || "basic"] += monster.hp;
+      }
+      state.stats.monstersKilled += victims.length;
+      state.stats.spellKills += victims.length;
+      const killed = new Set(victims);
+      state.monsters = state.monsters.filter(monster => !killed.has(monster));
+      state.animationEvents.push({type: "blast", before, after: snapshotBoard(state)});
       state.lastFallCells = new Set();
-      state.animationEvents.push({type: "shuffle", after: snapshotBoard(state)});
       resolveAllMatches(state, rng, {source: "spell"});
       processTriggers(state, rng);
       endIfNoMoves(state);
@@ -1364,6 +1397,12 @@ function chooseSpell(state, id, rng = defaultRng) {
     }
   }
   updateScore(state);
+  if (offer) Object.assign(offer, {
+    healthBefore: spellBefore.health, healthAfter: state.hp,
+    enemiesBefore: spellBefore.enemies, enemiesAfter: state.monsters.length,
+    healthGained: state.stats.healthGained-spellBefore.healthGained,
+    healthWasted: state.stats.healthWasted-spellBefore.healthWasted,
+  });
   return true;
 }
 
@@ -1565,7 +1604,13 @@ function newGame({ rng = defaultRng, dungeonLayout = null, itemGrid = null, stag
       peakHealth: CONFIG.STARTING_HP,
       alarmTriggers: [],
       boardResets: 0,
-      spellOffers:0, spellPasses:0, spellsCast:{freeze:0,heal:0,teleport:0,shuffle:0,map:0},
+      spellOffers:0, spellPasses:0, spellsCast:{freeze:0,heal:0,teleport:0,burst:0,map:0},
+      spellOfferLog: [], spellKills: 0,
+      damageTakenByEnemyType: {basic: 0, advanced: 0},
+      damageDealtByEnemyType: {basic: 0, advanced: 0},
+      healthGained: 0, healthWasted: 0,
+      healingBySource: {matches: {gained: 0, wasted: 0}, spells: {gained: 0, wasted: 0}},
+      turnsStartedMagicReady: 0, turnsEndedMagicReady: 0,
       monstersSpawned: 0,
       monstersKilled: 0,
       damageDealt: 0,
@@ -1630,7 +1675,12 @@ function advanceStage(state, rng = defaultRng) {
 function tryMatchMove(state, fromRow, fromCol, direction, options = {}) {
   const before={stage:state.stage,hp:state.hp,resources:{...state.resources},
     waves:state.stats.matchWaves.length,damageTaken:state.stats.damageTaken,
-    chaseDamageTaken:state.stats.chaseDamageTaken};
+    chaseDamageTaken:state.stats.chaseDamageTaken,
+    enemies: state.monsters.length, hunting: state.monsters.filter(m => m.aggro).length,
+    spawned: state.stats.monstersSpawned, magicReady: state.magicReady,
+    healthGained: state.stats.healthGained, healthWasted: state.stats.healthWasted,
+    damageTakenByEnemyType: {...state.stats.damageTakenByEnemyType},
+    damageDealtByEnemyType: {...state.stats.damageDealtByEnemyType}};
   if(state.spellOffer)return false;
   const success=performMatchMove(state,fromRow,fromCol,direction,options);
   if(success)recordCompletedTurn(state,before,direction,fromRow,fromCol);
@@ -1638,6 +1688,14 @@ function tryMatchMove(state, fromRow, fromCol, direction, options = {}) {
 }
 
 function recordCompletedTurn(state,before,direction,fromRow,fromCol) {
+  if (before.magicReady) state.stats.turnsStartedMagicReady++;
+  if (state.magicReady) state.stats.turnsEndedMagicReady++;
+  const damageTakenByEnemyType = {};
+  const damageDealtByEnemyType = {};
+  for (const type of Object.keys(MONSTER_TYPES)) {
+    damageTakenByEnemyType[type] = state.stats.damageTakenByEnemyType[type]-before.damageTakenByEnemyType[type];
+    damageDealtByEnemyType[type] = state.stats.damageDealtByEnemyType[type]-before.damageDealtByEnemyType[type];
+  }
   state.stats.turnLog.push({turn:state.stats.turns,
     stage:before.stage,nextStage:state.stage,alarmActive:state.alarmActive,keyDiscovered:state.keyDiscovered,direction,swapFrom:[fromRow,fromCol],
     healthBefore:before.hp,healthAfter:state.hp,
@@ -1645,7 +1703,15 @@ function recordCompletedTurn(state,before,direction,fromRow,fromCol) {
     chaseDamageTaken:state.stats.chaseDamageTaken-before.chaseDamageTaken,
     resourcesBefore:before.resources,resourcesAfter:{...state.resources},
     waves:state.stats.matchWaves.length-before.waves,
-    enemies:state.monsters.length,score:state.score});
+    enemies:state.monsters.length,score:state.score,
+    enemiesBefore: before.enemies, enemiesAfter: state.monsters.length,
+    monstersSummoned: state.stats.monstersSpawned-before.spawned,
+    huntingBefore: before.hunting, huntingAfter: state.monsters.filter(m => m.aggro).length,
+    healthGained: state.stats.healthGained-before.healthGained,
+    healthWasted: state.stats.healthWasted-before.healthWasted,
+    magicReadyBefore: before.magicReady, magicReadyAfter: state.magicReady,
+    damageTakenByEnemyType: damageTakenByEnemyType,
+    damageDealtByEnemyType: damageDealtByEnemyType});
 }
 
 function performMatchMove(state, fromRow, fromCol, direction, { rng = defaultRng } = {}) {
@@ -1714,10 +1780,12 @@ function resolveHeroAction(state,{direction,turnCascadeBonus,skipHeroAction=fals
     state.lastAttackDealt = effectiveDamage;
     state.lastAttackBonusUsed = bonus;
     state.stats.damageDealt += effectiveDamage;
+    state.stats.damageDealtByEnemyType[defender.type || "basic"] += effectiveDamage;
     state.stats.cascadeDamageDealt += effectiveCascadeDamage;
     if (bonus > 0) state.stats.cascadePoweredAttacks++;
     const retaliationDamage = Math.min(state.hp, retaliation);
     state.stats.damageTaken += retaliationDamage;
+    state.stats.damageTakenByEnemyType[defender.type || "basic"] += retaliationDamage;
     state.hp = Math.max(0, state.hp - retaliation);
     state.lastAttackDamage = retaliation;
     if (!state.hp) state.defeatedBy = monsterType(defender).name;
@@ -1979,7 +2047,7 @@ function renderResults() {
       <h2>${resultsTitle()}</h2>
       ${cause ? `<p class="result-cause">${cause}</p>` : ""}
       <div class="score">SCORE: ${game.score}</div>
-      <button id="copy-results" type="button">Copy Summary</button>
+      <button id="copy-results" type="button">Copy Analysis Data</button>
       <button id="export-results" type="button" style="margin:6px 0 12px">Export Full Data</button>
       <div id="export-status" role="status" style="font-size:12px;margin-bottom:8px"></div>
       <textarea id="run-data" readonly hidden aria-label="Run summary to copy" style="width:100%;height:140px"></textarea>
@@ -2000,7 +2068,6 @@ function renderResults() {
         <div>Alarms triggered: ${game.stats.alarmTriggers.length}</div>
         <div>Spell offers: ${game.stats.spellOffers} · Passed: ${game.stats.spellPasses}</div>
         <div>Spells cast: ${Object.values(game.stats.spellsCast).reduce((a,b)=>a+b,0)}</div>
-        <div>Resource reshuffles: ${game.stats.boardResets}</div>
         <div>Monsters spawned: ${game.stats.monstersSpawned}</div>
         <div>Monsters killed: ${game.stats.monstersKilled} (+${scoreBreakdown(game).kills})</div>
         <div>Total damage dealt: ${game.stats.damageDealt}</div>
@@ -2030,7 +2097,7 @@ function renderResults() {
       downloadRunData(game);
       status.textContent="Download requested. Find the JSON file in Safari Downloads or Files.";
     } catch {
-      status.textContent="Download couldn't start. Try again, or use Copy Summary.";
+      status.textContent="Download couldn't start. Try again, or use Copy Analysis Data.";
     }
   });
 }
@@ -2352,7 +2419,7 @@ async function playCascadeAnimation(events) {
         break;
       }
       case "summon":
-      case "shuffle":
+      case "blast":
       case "teleport":
         renderBoard(event.after);
         await wait(200);
